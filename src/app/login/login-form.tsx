@@ -20,7 +20,7 @@ const SHOW_DEV_HINTS = process.env.NEXT_PUBLIC_SHOW_DEV_HINTS === "1";
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const callbackUrl = params.get("callbackUrl") ?? "/user";
+  const callbackUrl = params.get("callbackUrl") ?? "/post-login";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

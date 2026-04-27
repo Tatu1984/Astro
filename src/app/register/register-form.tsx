@@ -61,7 +61,7 @@ export function RegisterForm() {
       return;
     }
 
-    router.replace("/user");
+    router.replace("/post-login");
     router.refresh();
   }
 
