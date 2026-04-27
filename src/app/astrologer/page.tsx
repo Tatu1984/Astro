@@ -1,79 +1,176 @@
-import { TopBar } from "@/frontend/components/portal/TopBar";
-import { Card } from "@/frontend/components/ui/Card";
-import { Button } from "@/frontend/components/ui/Button";
-import { Badge } from "@/frontend/components/ui/Badge";
-import { Avatar } from "@/frontend/components/ui/Avatar";
-import { CountUp } from "@/frontend/components/effects/CountUp";
-import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import {
+  AlertTriangle,
+  Award,
+  CheckCircle2,
+  Clock,
+  Inbox,
+  MapPin,
+  Phone,
+  ShieldCheck,
+  User,
+} from "lucide-react";
 
-const KPIS = [
-  { label: "Today's earnings", val: 4820, prefix: "₹",  sub: "+18% vs yesterday", tone: "aqua"  as const },
-  { label: "Active session",   val: 1,                 sub: "Maya · 12 min",     tone: "gold"  as const },
-  { label: "Queue",            val: 7,                 sub: "Avg wait 4 min",    tone: "violet"as const },
-  { label: "Avg rating",       val: 4.92,decimals: 2,  sub: "287 reviews",       tone: "rose"  as const },
-];
+import { auth } from "@/auth";
+import { getOwnAstrologerProfile } from "@/backend/services/astrologer.service";
+import { TopBar } from "@/frontend/components/portal/TopBar";
+import { Badge } from "@/frontend/components/ui/Badge";
+import { Button } from "@/frontend/components/ui/Button";
+import { Card } from "@/frontend/components/ui/Card";
 
-const QUEUE = [
-  { name: "Maya S.",  topic: "Career · 30m",  initials: "MS", tone: "violet" as const },
-  { name: "Arjun M.", topic: "Marriage · 15m",initials: "AM", tone: "gold"   as const },
-  { name: "Priya K.", topic: "Health · 60m",  initials: "PK", tone: "aqua"   as const },
-  { name: "Rohan T.", topic: "General · 30m", initials: "RT", tone: "rose"   as const },
-  { name: "Neha P.",  topic: "Career · 30m",  initials: "NP", tone: "violet" as const },
-];
+const STATUS_BADGE_TONE: Record<string, "aqua" | "gold" | "rose"> = {
+  ACTIVE: "aqua",
+  PENDING: "gold",
+  SUSPENDED: "rose",
+};
 
-export default function AstrologerDashboard() {
+function StatusBanner({ status }: { status: "PENDING" | "ACTIVE" | "SUSPENDED" }) {
+  if (status === "ACTIVE") {
+    return (
+      <div className="flex items-center gap-3 rounded-md border border-[var(--color-brand-aqua)]/30 bg-[var(--color-brand-aqua)]/10 px-4 py-3">
+        <CheckCircle2 className="h-4 w-4 text-[var(--color-brand-aqua)]" />
+        <p className="text-sm text-white">
+          Your account is <strong>active</strong>. Once consultations and bookings ship, clients will be able to find you.
+        </p>
+      </div>
+    );
+  }
+  if (status === "PENDING") {
+    return (
+      <div className="flex items-start gap-3 rounded-md border border-[var(--color-brand-gold)]/30 bg-[var(--color-brand-gold)]/10 px-4 py-3">
+        <Clock className="h-4 w-4 text-[var(--color-brand-gold)] mt-0.5" />
+        <div className="text-sm text-white">
+          <p>
+            Your account is <strong>awaiting admin review</strong>. KYC and banking details will be verified before activation.
+          </p>
+          <p className="mt-1 text-white/55 text-xs">
+            You can review what we have on file under <Link href="/astrologer/profile" className="underline">Profile</Link>.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-start gap-3 rounded-md border border-[var(--color-brand-rose)]/30 bg-[var(--color-brand-rose)]/10 px-4 py-3">
+      <AlertTriangle className="h-4 w-4 text-[var(--color-brand-rose)] mt-0.5" />
+      <div className="text-sm text-white">
+        <p>
+          Your account is <strong>suspended</strong>. Contact support for next steps.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default async function AstrologerDashboard() {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+
+  const profile = await getOwnAstrologerProfile(session.user.id);
+
+  // Edge case: ADMIN poking around an astrologer route, or ASTROLOGER role
+  // that somehow has no AstrologerProfile row. The proxy already gates by
+  // role, so this is just a safety net.
+  if (!profile) {
+    return (
+      <>
+        <TopBar
+          title="Astrologer"
+          subtitle="No astrologer profile on file"
+          right={<Badge tone="rose">No profile</Badge>}
+          initials="?"
+        />
+        <div className="p-6 max-w-2xl">
+          <Card className="!p-8 text-center">
+            <h2 className="text-lg font-semibold text-white">Profile missing</h2>
+            <p className="mt-2 text-sm text-white/60 max-w-md mx-auto">
+              Your account has the ASTROLOGER role but no astrologer profile is attached. Ask an admin to onboard you via the Users page.
+            </p>
+          </Card>
+        </div>
+      </>
+    );
+  }
+
+  const initials = profile.fullName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
+
   return (
     <>
       <TopBar
-        title="Welcome back, Pandit Verma"
-        subtitle="Sunday · 26 April 2026"
-        right={<Badge tone="aqua" className="!text-[10px]">● Online</Badge>}
-        initials="PV"
+        title={`Welcome, ${profile.fullName}`}
+        subtitle={`${profile.city}, ${profile.state} · joined ${profile.createdAt.toLocaleDateString("en-GB", { year: "numeric", month: "short", day: "2-digit" })}`}
+        right={<Badge tone={STATUS_BADGE_TONE[profile.status]}>● {profile.status}</Badge>}
+        initials={initials}
       />
       <div className="p-6 space-y-6">
-        {/* KPI grid */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {KPIS.map((k) => (
-            <Card key={k.label} accent={k.tone}>
-              <div className="text-xs text-white/50">{k.label}</div>
-              <div className="mt-1 text-3xl font-semibold text-white tabular-nums">
-                <CountUp to={k.val} prefix={k.prefix ?? ""} decimals={k.decimals ?? 0} />
-              </div>
-              <div className="text-xs text-white/55 mt-1">{k.sub}</div>
-            </Card>
-          ))}
-        </div>
+        <StatusBanner status={profile.status} />
 
+        {/* Profile snapshot */}
         <div className="grid lg:grid-cols-[1fr_360px] gap-6">
-          {/* earnings sparkline */}
-          <Card>
+          <Card className="!p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-[var(--color-brand-gold)]">Earnings · last 30 days</h3>
-              <Button size="sm" variant="outline">Last 30 days</Button>
+              <h3 className="font-semibold text-[var(--color-brand-gold)]">Profile snapshot</h3>
+              <Link href="/astrologer/profile">
+                <Button variant="outline" size="sm">View full profile</Button>
+              </Link>
             </div>
-            <Sparkline />
-            <p className="text-xs text-white/45 mt-2">Average per day · ₹1,610</p>
+
+            <div className="grid sm:grid-cols-2 gap-3 text-sm">
+              <SnapField icon={<User className="h-3.5 w-3.5" />} label="Name" value={profile.fullName} />
+              <SnapField icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={profile.phone} />
+              <SnapField icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={`${profile.city}, ${profile.state}, ${profile.country}`} />
+              <SnapField
+                icon={<ShieldCheck className="h-3.5 w-3.5" />}
+                label="KYC"
+                value={`${profile.kycType}${profile.kycVerifiedAt ? " · verified" : ""}`}
+              />
+              {typeof profile.yearsExperience === "number" ? (
+                <SnapField
+                  icon={<Award className="h-3.5 w-3.5" />}
+                  label="Experience"
+                  value={`${profile.yearsExperience} year${profile.yearsExperience === 1 ? "" : "s"}`}
+                />
+              ) : null}
+            </div>
+
+            {profile.specialties.length ? (
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-wider text-white/40 mb-1.5">Specialties</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {profile.specialties.map((s) => (
+                    <span
+                      key={s}
+                      className="rounded-md border border-[var(--color-border)] bg-white/5 px-2 py-0.5 text-[11px] text-white/80"
+                    >
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {profile.bio ? (
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-wider text-white/40 mb-1.5">Bio</p>
+                <p className="text-sm text-white/70 leading-relaxed">{profile.bio}</p>
+              </div>
+            ) : null}
           </Card>
 
-          {/* live queue */}
-          <Card accent="violet">
-            <h3 className="font-semibold text-[var(--color-brand-gold)] mb-4">Live queue · 5 waiting</h3>
-            <ul className="divide-y divide-[var(--color-border)] text-sm">
-              {QUEUE.map((q) => (
-                <li key={q.name} className="flex items-center gap-3 py-2.5">
-                  <Avatar initials={q.initials} size={28} tone={q.tone} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-white truncate">{q.name}</div>
-                    <div className="text-xs text-white/50 truncate">{q.topic}</div>
-                  </div>
-                  <Button size="sm" variant="gold">Accept</Button>
-                </li>
-              ))}
+          {/* Coming-soon panels */}
+          <Card accent="violet" className="!p-6">
+            <h3 className="font-semibold text-[var(--color-brand-gold)] mb-3">What's next</h3>
+            <ul className="space-y-3 text-sm">
+              <ComingSoonItem icon={<Inbox className="h-3.5 w-3.5" />} label="Live queue" body="Booking + queueing arrives in Phase 3." />
+              <ComingSoonItem icon={<User className="h-3.5 w-3.5" />} label="Clients" body="View clients you've consulted with — Phase 3." />
+              <ComingSoonItem icon={<Award className="h-3.5 w-3.5" />} label="Earnings & payouts" body="Stripe + RevenueCat integration in Phase 5." />
             </ul>
-            <Link href="/astrologer/session" className="text-xs text-[var(--color-brand-gold)] mt-3 inline-flex items-center gap-1 hover:underline">
-              Open active session <ArrowUpRight className="h-3 w-3" />
-            </Link>
           </Card>
         </div>
       </div>
@@ -81,23 +178,45 @@ export default function AstrologerDashboard() {
   );
 }
 
-function Sparkline() {
-  // generate a deterministic SVG path
-  const pts = [12, 18, 14, 22, 19, 26, 24, 30, 27, 32, 29, 35, 31, 38, 34, 41, 38, 42, 39, 44, 41, 47, 44, 50, 46, 52, 49, 54, 51, 58];
-  const W = 800, H = 160, max = Math.max(...pts);
-  const step = W / (pts.length - 1);
-  const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${(i * step).toFixed(2)} ${(H - (p / max) * H + 10).toFixed(2)}`).join(" ");
-  const da = `${d} L ${W} ${H} L 0 ${H} Z`;
+function SnapField({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
   return (
-    <svg viewBox={`0 0 ${W} ${H + 10}`} className="w-full h-40">
-      <defs>
-        <linearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"  stopColor="var(--color-brand-aqua)" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="var(--color-brand-aqua)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={da} fill="url(#spark)" />
-      <path d={d}  fill="none" stroke="var(--color-brand-aqua)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
+    <div>
+      <p className="text-xs uppercase tracking-wider text-white/40 mb-1 inline-flex items-center gap-1.5">
+        {icon}
+        {label}
+      </p>
+      <p className="text-white/85">{value}</p>
+    </div>
+  );
+}
+
+function ComingSoonItem({
+  icon,
+  label,
+  body,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  body: string;
+}) {
+  return (
+    <li>
+      <div className="flex items-center gap-2 text-white/85">
+        {icon}
+        <span className="font-medium">{label}</span>
+        <span className="ml-auto rounded border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-white/40">
+          Soon
+        </span>
+      </div>
+      <p className="text-xs text-white/50 mt-0.5">{body}</p>
+    </li>
   );
 }

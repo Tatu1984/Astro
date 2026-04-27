@@ -9,184 +9,196 @@
 
 > Package manager: **npm** (matches existing `package-lock.json`).
 
-### Setup & infra (needs you)
-- [x] **Create NeonDB project**; paste connection string into `.env.local` as `DATABASE_URL`
-- [x] **Decide git layout** — fresh repo inside `astro/` (clean isolation from parent)
-- [x] **Create GitHub repo** for astro and push `main` (`git@github.com:Tatu1984/Astro.git`)
-- [ ] **Link Vercel project** to the GitHub repo; verify preview deploy on first PR
-  - In Vercel project Settings → Environment Variables: add `DATABASE_URL` with the NeonDB string (without it, build fails because `src/config/env.ts` requires it)
-  - Add `NEXTAUTH_URL` = your Vercel preview URL (or leave blank until custom domain)
-  - Re-trigger the deploy; Prisma client now generates via `postinstall` hook
-- [x] **Decide UI direction**: shadcn for primitives + reactbits.dev for animated effects (saved to memory)
+### Setup & infra
+- [x] **NeonDB project** + connection string in `.env.local`
+- [x] **GitHub repo** `Tatu1984/Astro` (fresh git init inside `astro/`)
+- [x] **GitHub repo** `Tatu1984/Astro-Compute` (separate FastAPI service)
+- [ ] **Vercel project link**: import `Tatu1984/Astro`, set 5 env vars (`DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_SECRET`, `COMPUTE_BASE_URL`, `COMPUTE_SHARED_SECRET`), redeploy
+- [x] **UI direction**: shadcn (under `src/frontend/components/ui/shadcn/`) + reactbits.dev for animated effects (saved to memory)
 
 ### Folder restructure (SoW §6)
-- [x] Create `src/backend/{services,repositories,validators,database,utils}` (no `api/` — see note below)
-- [x] Create `src/frontend/{components,hooks,store,api/endpoints,api/types,utils}`
-- [x] Create `src/shared/{types,constants,utils}`
-- [x] Create `src/config/`
-- [x] Move `src/components/*` → `src/frontend/components/`
-- [x] Move `src/lib/cn.ts` → `src/frontend/utils/cn.ts`
-- [x] Bulk-rewrite imports across 43 files (`@/components/*` → `@/frontend/components/*`, `@/lib/cn` → `@/frontend/utils/cn`)
-- [x] `npm run typecheck` passes; `npm run build` passes (all 34 pages render)
+- [x] `src/{backend,frontend,shared,config}/` created and populated
+- [x] Imports rewritten across 43 files
+- [x] `npm run typecheck` and `npm run build` pass
 
-> **SoW deviation:** Next.js 16 App Router requires `route.ts` files inside `src/app/api/.../`. The SoW puts them under `src/backend/api/` which doesn't work. Resolution: thin `route.ts` shells live in `src/app/api/` and call into `src/backend/services/` for actual logic. Preserves the SoW's three-layer separation.
+> **SoW deviation:** route handlers must live in `src/app/api/.../route.ts` (Next.js requirement); the SoW's `src/backend/api/` would never be discovered by Next. Resolution: thin `route.ts` shells call services in `src/backend/services/`.
 
 ### Prisma & DB
-- [x] `npm i prisma @prisma/client @prisma/adapter-pg pg dotenv`
-- [x] Create `prisma.config.ts` (Prisma 7 — loads `DATABASE_URL` from env)
-- [x] Create `src/backend/database/prisma/schema.prisma` (no `url` in datasource block)
-- [x] Create `src/backend/database/client.ts` (PrismaClient + adapter-pg singleton, no `datasourceUrl`)
-- [x] `npm run db:generate` succeeds against placeholder URL
-- [x] `npm run db:migrate -- --name init` against real NeonDB — applied; enables pgvector
+- [x] Prisma 7 with `prisma.config.ts` + `@prisma/adapter-pg`
+- [x] Schema split into 4 migrations (`init`, `auth_profile_chart`, `chart_unique_user_input`, `astrologer_profile`)
+- [x] pgvector extension enabled (Phase 2 RAG)
 
 ### Config & validation
-- [x] `npm i zod`
-- [x] `src/config/env.ts` — Zod-validated env loader; throws at boot on invalid env
-- [x] `.env.example` checked in
-- [x] `.gitignore` excludes `.env*` but allows `.env.example`
+- [x] `src/config/env.ts` Zod-validated env loader
+- [x] `.env.example` checked in; `.gitignore` allows `.env.example`
 
 ### CI
-- [x] `.github/workflows/ci.yml` — install + db:generate + typecheck + build on PR
-- [ ] **Lint cleanup** (then re-enable `lint` step in CI): pre-existing scaffolding has 4 errors:
+- [x] `.github/workflows/ci.yml` — install + db:generate + typecheck + build
+- [ ] **Lint cleanup** then re-enable `lint` in CI (4 pre-existing scaffolding errors):
   - `src/app/page.tsx:157` — unescaped `'`
   - `src/app/user/page.tsx:43` — unescaped `'`
-  - `src/app/user/chat/page.tsx:32` — `Date.now()` called during render (React purity)
-  - `src/frontend/components/effects/TextType.tsx:17` — `setState` in effect body
-- [ ] First PR opens green CI + green Vercel preview
+  - `src/app/user/chat/page.tsx:32` — `Date.now()` during render
+  - `src/frontend/components/effects/TextType.tsx:17` — `setState` in effect
 
 ### Phase 0 done when
-- [x] `npm run typecheck` clean
-- [x] `npm run build` clean
-- [x] `npm run db:migrate` clean against real NeonDB
-- [ ] PR opens green CI + green Vercel preview
+- [x] `typecheck` + `build` clean on every commit
+- [x] DB schema in sync with `main`
+- [ ] PR opens green CI **and** green Vercel preview
 
 ---
 
 ## Phase 1 — Auth, Profiles, Chart Compute
 
 ### Database
-- [x] Add `User`, `Account`, `Session`, `VerificationToken`, `Profile`, `Chart` to `schema.prisma` (Auth.js shape, SoW §10 phase-1 subset)
-- [x] `prisma migrate dev --name auth_profile_chart`
-- [x] `prisma migrate dev --name chart_unique_user_input` (cache key)
-- [ ] `seed.ts` for Plan tier rows + glossary stub
+- [x] `User`, `Account`, `Session`, `VerificationToken`, `Profile`, `Chart`, `AstrologerProfile` migrated to NeonDB
+- [x] Enums: `UserRole`, `AstroSystem`, `ProfileKind`, `HouseSystem`, `ChartKind`, `KycType`, `AstrologerStatus`
+- [ ] `Plan` tier rows + `GlossaryEntry` seed (lands with Phase 2)
 
-### Auth
-- [x] `npm i next-auth@beta @auth/prisma-adapter bcryptjs`
-- [x] Email/password signup (POST /api/auth/signup) + Credentials login
-- [x] JWT session strategy; `auth()` helper exposed
-- [x] `/api/charts/natal` gated on `session.user.id`
-- [ ] Google OAuth provider (need GOOGLE_CLIENT_ID + SECRET)
-- [ ] Apple OAuth provider (needs paid Apple Developer account)
-- [ ] Facebook OAuth provider (needs Meta Dev app)
+### Auth (Auth.js v5)
+- [x] `next-auth@beta` + `@auth/prisma-adapter` + `bcryptjs`
+- [x] Edge-safe split: `auth.config.ts` (proxy) vs `auth.ts` (Node + Prisma + Credentials)
+- [x] Email/password signup (POST `/api/auth/signup`, role hardcoded USER)
+- [x] Credentials login + JWT session, role on `session.user.role`
+- [x] `/login` and `/register` pages (shadcn primitives, Aurora background)
+- [x] Dev-account hints on `/login` gated by `NEXT_PUBLIC_SHOW_DEV_HINTS`
+- [x] `/post-login` server router → role-appropriate dashboard
+- [x] Sign-out button on every portal `TopBar`
+- [ ] Google OAuth provider (needs `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`)
+- [ ] Apple OAuth (needs paid Apple Developer account)
+- [ ] Facebook OAuth (needs Meta Dev app)
 - [ ] Phone OTP (Twilio Verify or MSG91 — defer)
-- [ ] Login/Register UI pages + form components
 
-### Profiles
-- [ ] Birth-data form (date/time/place/unknown-time flag) on user portal
-- [x] Geocoding util in `src/backend/utils/geocode.util.ts` (OSM Nominatim, free, no key)
-- [ ] `POST /api/profiles` — create Profile (Zod-validated)
-- [ ] `GET /api/profiles` — list user's profiles
-- [ ] `PATCH /api/profiles/:id` — edit
-- [ ] Profile management UI in user portal
-- [ ] Leaflet + leaflet-geosearch map picker for birth-place
+### Proxy / RBAC
+- [x] `src/proxy.ts` (Next 16 renamed `middleware.ts`) gates by role:
+  - `/admin/*`        → ADMIN only
+  - `/astrologer/*`   → ASTROLOGER or ADMIN
+  - `/user/*`         → any signed-in user
+  - Wrong role → redirect to `/user`; not signed in → `/login`
+- [x] API handlers re-check role (defence in depth, returns 401/403)
 
-### Python compute microservice
-- [x] Decide host: Render free tier
-- [x] Bootstrap FastAPI project — separate repo: `Tatu1984/Astro-Compute`
-- [x] `pip` deps: `pyswisseph` (Moshier mode); add `kerykeion`/`jyotisha`/`flatlib` when Vedic features land
-- [x] `POST /natal` endpoint → deterministic chart JSON (planets, houses, asc, mc)
-- [x] Internal auth: `X-Compute-Secret` header
-- [x] Deployed at https://astro-compute.onrender.com (Python 3.12.5 pinned)
+### Profiles (birth-data)
+- [x] OSM Nominatim geocoder (`src/backend/utils/geocode.util.ts`, no API key)
+- [x] `tz-lookup` server-side timezone from lat/lng (kept off client bundle)
+- [x] `GET/POST /api/profiles`, `DELETE /api/profiles/[id]` (auth-gated, ownership check)
+- [x] `GET /api/geocode?q=` and `GET /api/tz?lat=&lng=` (auth-gated)
+- [x] **Leaflet map picker** with search + draggable marker (`MapPicker` + `MapPickerInner`)
+- [x] `date-fns-tz` zones local birth datetime → UTC for storage
+- [x] `/user/profile` page: list + add + delete; "I don't know my birth time" toggle (uses noon UTC)
+- [x] Soft-delete via `deletedAt`; `PROFILE_SOFT_CAP` = 50
+
+### Python compute microservice (Astro-Compute)
+- [x] FastAPI scaffold deployed on Render free tier (Python 3.12.5)
+- [x] `POST /natal` (Moshier ephemeris, no data files needed)
+- [x] `X-Compute-Secret` shared-secret auth
 - [x] Smoke tested end-to-end from Next.js
+- [ ] Switch to Swiss Ephemeris (FLG_SWIEPH) by bundling `.se1` data files in image
+- [ ] Add Chiron + asteroids (need `seas_18.se1`)
+- [ ] `/transit`, `/synastry`, `/dasha`, `/divisional` endpoints (Phase 2/3)
 
-### Chart pipeline
-- [x] `chart.service.ts` calls Python micro with shared-secret header
-- [x] `chart.repository.ts` upserts to `Chart` table on `(userId, kind, system, houseSystem, inputHash)`
-- [x] `POST /api/charts/natal` route handler (auth-gated, Zod-validated)
-- [x] Cache verified: 2nd identical request returns `cached=true` without hitting Render
-- [ ] Wire `ChartWheel` UI to call `/api/charts/natal` (replace mock)
-- [ ] North Indian style SVG renderer
-- [ ] South Indian style SVG renderer
+### Chart pipeline (Next.js side)
+- [x] `chart.service.resolveNatal`: cache lookup → compute → upsert
+- [x] `chart.repository`: idempotent upsert on `(userId, kind, system, houseSystem, inputHash)`
+- [x] `POST /api/charts/natal` (auth-gated, Zod-validated, profile-bound)
+- [x] `/user` landing renders real planets/signs/houses panel beside the existing decorative wheel
+- [ ] **Real ChartWheel geometry**: plot real planet longitudes on the SVG (currently the wheel is decorative; the data panel beside it shows the real numbers)
+- [ ] North Indian SVG renderer
+- [ ] South Indian SVG renderer
 - [ ] Aspect grid component
-- [ ] Divisional charts D1–D60 (pick subset for v1)
-- [ ] House systems toggle (Placidus / Whole Sign / Koch / Equal / Vedic Equal) in UI
+- [ ] House-systems toggle in UI (Placidus / Whole Sign / Koch / Equal / Vedic Equal)
+- [ ] Divisional charts D1–D60 (pick subset)
+
+### Admin & RBAC (added scope, fits Phase 1)
+- [x] Seed: `admin@astro.local` has `role=ADMIN`; user1/user2 are USER
+- [x] `/admin/users` shows real Postgres data with role-count badges
+- [x] Promote/demote between USER and ASTROLOGER (refuses self / refuses to touch ADMIN)
+- [x] `GET /api/admin/users`, `PATCH /api/admin/users/[id]/role`
+
+### Astrologer foundation (added scope, SoW §3.2 "foundation only")
+- [x] `AstrologerProfile` schema (KYC, banking, qualifications, address, status)
+- [x] **`+ Astrologer` button** on `/admin/users` opens a sectioned dialog (Account / Contact / KYC / Professional / Banking)
+- [x] `POST /api/admin/astrologers` creates `User(role=ASTROLOGER) + AstrologerProfile` in a transaction
+- [x] `/admin/astrologers` review queue with status badges + Approve/Reject/Suspend/Reactivate buttons (state-machine enforced)
+- [x] `GET /api/admin/astrologers` returns SAFE projection (no kycNumber, bank, UPI in list)
+- [x] `PATCH /api/admin/astrologers/[id]/status`
+- [ ] **Astrologer self-portal** (in progress now): `/astrologer` dashboard with status banner + profile snapshot; `/astrologer/profile` read-only detail of own KYC/bank/UPI
+- [ ] Astrologer profile **edit** (non-sensitive fields: bio, qualifications, specialties, address)
+- [ ] Admin "view detail" drawer on `/admin/astrologers` showing full KYC + bank (uses `getAstrologerDetail`)
+- [ ] Field-level encryption for `kycNumber`, `bankAccountNumber`, `bankIfsc`, `upiId` **before any prod data** (XChaCha20 with key from env)
 
 ### Phase 1 done when
-- [x] Signed-in user can call `/api/charts/natal` and get a real chart (verified via curl)
-- [ ] Real natal chart **renders on screen** (Western + Vedic) via UI
-- [x] Chart cached on second view (no recompute) — verified
+- [x] User signs up, creates a Profile, sees their real chart on `/user`
+- [x] Admin onboards, approves, suspends astrologers via `/admin`
+- [ ] Astrologer signs in, lands on `/astrologer`, sees their KYC status + profile
+- [x] Cache verified end-to-end (cached=true on second request)
+- [ ] PR opens green CI + green Vercel preview
 
 ---
 
 ## Phase 2 — AI & Predictions
 
-- [ ] LLM router (`llm.router.ts`) with Gemini + Groq + Anthropic + OpenAI providers
-- [ ] Prompt builder seeded from chart JSON
-- [ ] pgvector enabled in NeonDB; `Embedding` table
-- [ ] Glossary seed + embedding job
-- [ ] Daily horoscope route + BullMQ precompute
-- [ ] Weekly / monthly / yearly horoscope routes
-- [ ] Long-form report generators (Career, Love, Health, Education, Spiritual)
-- [ ] PDF rendering via Puppeteer → R2
-- [ ] AI Chat with Chart (sessions, messages, streaming)
-- [ ] Safety filters + disclaimer panel
+- [ ] Glossary content seeded; `Embedding` table populated via job
+- [ ] `llm.router.ts` with Gemini → Groq → Anthropic → OpenAI; cost tier per route
+- [ ] Prompt builder consumes chart JSON; safety filters + disclaimer enforcement
+- [ ] Daily / weekly / monthly / yearly horoscope routes
+- [ ] BullMQ precompute jobs (Upstash Redis)
+- [ ] Long-form reports (Career / Love / Health / Education / Spiritual) → markdown → Puppeteer PDF → R2
+- [ ] AI Chat with Chart: sessions, messages, streaming
 - [ ] `LlmCallLog` writes on every LLM call
-- [ ] Admin LLM-cost dashboard wires to real data
+- [ ] Admin LLM-cost dashboard reads real data
 
 ---
 
 ## Phase 3 — Compatibility, Calendar, Notifications
 
-- [ ] Synastry compute in Python micro
-- [ ] Composite + Davison compute
-- [ ] Ashtakoot Milan + Manglik compute
-- [ ] Compatibility UI in user portal
-- [ ] Muhurta finder
-- [ ] Retrograde + eclipse alert generators
+- [ ] Synastry / Composite / Davison in Python compute
+- [ ] Ashtakoot Milan + Manglik
+- [ ] Compatibility UI in `/user`
+- [ ] Muhurta finder + retrograde / eclipse alert generators
 - [ ] BullMQ scheduled jobs
-- [ ] FCM + APNs push pipeline
-- [ ] DeviceToken registration endpoint
-- [ ] Community feed: Post / Comment / Reaction
+- [ ] FCM + APNs push pipeline + `DeviceToken` registration
+- [ ] Community feed (`Post`, `Comment`, `Reaction`)
 - [ ] Shareable card generator
 
 ---
 
 ## Phase 4 — Mobile + Polish
 
-- [ ] Turborepo + pnpm workspaces migration
-- [ ] `apps/web` (move current Next.js) + `apps/mobile` (Expo) + `packages/shared` + `packages/chart-engine`
-- [ ] React Native: auth, profiles, chart wheel, daily horoscope (parity with web P0)
-- [ ] MMKV offline cache
-- [ ] Daily horoscope home-screen widget (iOS + Android)
+- [ ] Turborepo + pnpm workspaces; `apps/web` + `apps/mobile` (Expo)
+- [ ] Shared `chart-engine` SDK between web & mobile
+- [ ] React Native parity for P0 (auth, profile, chart wheel, daily horoscope)
+- [ ] MMKV offline cache; home-screen widget (iOS + Android)
 - [ ] Accessibility audit (WCAG 2.2 AA)
-- [ ] i18n: EN + HI + 2 regional (chosen at kickoff)
+- [ ] i18n: EN + HI + 2 regional Indian languages
 
 ---
 
 ## Phase 5 — Hardening & Launch
 
-- [ ] Stripe checkout + webhook → `Subscription` + `Invoice`
-- [ ] RevenueCat integration (mobile entitlements)
+- [ ] Stripe (web) + RevenueCat (mobile) entitlements unified → `Subscription` + `Invoice`
 - [ ] Load test daily-horoscope path (k6 or Artillery)
-- [ ] Security review (OWASP ASVS L2 checklist)
+- [ ] Security review (OWASP ASVS L2)
 - [ ] Doppler for secrets
-- [ ] iOS App Store submission
-- [ ] Google Play submission
-- [ ] Runbooks: deploy, rollback, incident response, LLM-vendor switch
+- [ ] iOS App Store + Google Play submission
+- [ ] Runbooks: deploy / rollback / incident / LLM-vendor switch
 - [ ] CONTRIBUTING.md + README polish
-- [ ] Soft-launch announcement
+- [ ] Soft-launch
+
+---
+
+## Cross-cutting (run continuously)
+
+- [ ] Sentry on web + Python micro
+- [ ] OpenTelemetry traces; PostHog product analytics
+- [ ] Vitest unit + Playwright E2E grow per feature
+- [ ] OpenAPI 3.1 generated from Zod schemas
+- [ ] `Consent` table writes on TOS / Privacy / marketing acceptance
+- [ ] `AuditLog` writes on auth events, role changes, astrologer status changes
 
 ---
 
 ## Blocked / awaiting input
 
-> Move items here when blocked on the user. Move back when unblocked.
-
-- [ ] **NeonDB connection string** — needed to run `db:migrate` (Phase 0 closeout)
-- [ ] **Git layout decision** — fresh repo in `astro/` vs parent `projects/` repo
-- [ ] **GitHub repo URL** for `astro` project (after git decision)
-- [ ] **Vercel project link**
-- [ ] **shadcn/ui vs hand-rolled primitives** decision
-- [ ] **Compute host**: Render or Fly.io (needed for Phase 1)
+- [ ] **Vercel project link** + 5 env vars set in Vercel project (only blocker on a green production deploy)
+- [ ] **Compute host upgrade** (Render free tier sleeps after 15 min — not a problem for dev; upgrade to Starter ($7/mo) before any real users)
 - [ ] **App name + domain**
 - [ ] **2 regional Indian languages** beyond EN/HI (needed for Phase 4)

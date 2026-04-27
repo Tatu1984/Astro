@@ -140,6 +140,20 @@ export async function getAstrologerDetail(id: string) {
   return profile;
 }
 
+/**
+ * Self-service: an astrologer fetching their own profile. Returns
+ * sensitive fields because they belong to the requester. Caller is
+ * responsible for verifying that session.user.id matches the userId.
+ */
+export async function getOwnAstrologerProfile(userId: string) {
+  return prisma.astrologerProfile.findUnique({
+    where: { userId },
+    include: {
+      user: { select: { id: true, email: true, role: true, createdAt: true } },
+    },
+  });
+}
+
 export async function setAstrologerStatus(id: string, newStatus: AstrologerStatus) {
   const current = await prisma.astrologerProfile.findUnique({
     where: { id },

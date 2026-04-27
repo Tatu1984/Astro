@@ -24,16 +24,18 @@ Get the skeleton ready before any feature work.
 
 The load-bearing slice. Everything later builds on Profile + Chart.
 
-- Prisma migrate: `User`, `AuthIdentity`, `Session`, `Profile`, `Chart` from SoW §10
+- Prisma migrate: `User`, `Account`, `Session`, `VerificationToken`, `Profile`, `Chart`, `AstrologerProfile` from SoW §10 phase-1 subset
 - NextAuth v5: Email/password first; Google + Apple + Facebook + Phone OTP
-- Birth-data form + geocoding via OpenCage (free tier) → lat/long/timezone
-- **Python FastAPI compute microservice** (Render or Fly): pyswisseph + Kerykeion + Jyotisha
+- Birth-data form + **OSM Nominatim** geocoding (replaces OpenCage which now requires a card) → lat/long/timezone
+- **Python FastAPI compute microservice** on Render: pyswisseph (Moshier mode); Kerykeion + Jyotisha land in Phase 2/3
 - Deterministic chart JSON; `Chart.inputHash` cache to skip recompute
 - `/api/charts/natal` route handler → service → repository → Python micro
+- **Admin + RBAC closeout**: `/admin/users` user mgmt, `/admin/astrologers` review queue (Approve / Reject / Suspend / Reactivate), `+ Astrologer` onboarding dialog (KYC + bank + qualifications)
+- **Astrologer foundation** (SoW §3.2 "foundation only"): self-portal at `/astrologer` with status banner + profile snapshot
 - Wire existing `ChartWheel` to real data; add North/South Indian SVG renderers
 - Aspect grid, divisional charts D1–D60, multiple house systems (Placidus/Whole Sign/Koch/Equal/Vedic Equal)
 
-**Exit criteria:** A signed-in user submits birth data and sees their real natal chart on screen.
+**Exit criteria:** A signed-in user submits birth data and sees their real natal chart on screen; an admin can onboard, approve, and suspend astrologers; an astrologer can sign in and see their own status + profile.
 
 ---
 
