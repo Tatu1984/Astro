@@ -14,7 +14,10 @@
 - [x] **Decide git layout** — fresh repo inside `astro/` (clean isolation from parent)
 - [x] **Create GitHub repo** for astro and push `main` (`git@github.com:Tatu1984/Astro.git`)
 - [ ] **Link Vercel project** to the GitHub repo; verify preview deploy on first PR
-- [ ] **Decide UI direction**: install shadcn/ui **OR** keep hand-rolled primitives (document choice)
+  - In Vercel project Settings → Environment Variables: add `DATABASE_URL` with the NeonDB string (without it, build fails because `src/config/env.ts` requires it)
+  - Add `NEXTAUTH_URL` = your Vercel preview URL (or leave blank until custom domain)
+  - Re-trigger the deploy; Prisma client now generates via `postinstall` hook
+- [x] **Decide UI direction**: shadcn for primitives + reactbits.dev for animated effects (saved to memory)
 
 ### Folder restructure (SoW §6)
 - [x] Create `src/backend/{services,repositories,validators,database,utils}` (no `api/` — see note below)
