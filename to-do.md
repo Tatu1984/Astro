@@ -10,11 +10,9 @@
 > Package manager: **npm** (matches existing `package-lock.json`).
 
 ### Setup & infra (needs you)
-- [ ] **Create NeonDB project**; paste connection string into `.env.local` as `DATABASE_URL`
-- [ ] **Decide git layout**: the parent `~/Desktop/projects/` is currently one big git repo containing the original VMS commit + a dozen untracked sibling projects (astro, hms, hrms, prospectiq, etc.). Pick one:
-  - (a) `git init` a fresh repo inside `astro/` (recommended — clean isolation)
-  - (b) Keep the parent repo and push astro from there
-- [ ] **Create GitHub repo** for astro and push `main`
+- [x] **Create NeonDB project**; paste connection string into `.env.local` as `DATABASE_URL`
+- [x] **Decide git layout** — fresh repo inside `astro/` (clean isolation from parent)
+- [x] **Create GitHub repo** for astro and push `main` (`git@github.com:Tatu1984/Astro.git`)
 - [ ] **Link Vercel project** to the GitHub repo; verify preview deploy on first PR
 - [ ] **Decide UI direction**: install shadcn/ui **OR** keep hand-rolled primitives (document choice)
 
@@ -36,7 +34,7 @@
 - [x] Create `src/backend/database/prisma/schema.prisma` (no `url` in datasource block)
 - [x] Create `src/backend/database/client.ts` (PrismaClient + adapter-pg singleton, no `datasourceUrl`)
 - [x] `npm run db:generate` succeeds against placeholder URL
-- [ ] `npm run db:migrate -- --name init` against real NeonDB (blocked on connection string)
+- [x] `npm run db:migrate -- --name init` against real NeonDB — applied; enables pgvector
 
 ### Config & validation
 - [x] `npm i zod`
@@ -56,7 +54,7 @@
 ### Phase 0 done when
 - [x] `npm run typecheck` clean
 - [x] `npm run build` clean
-- [ ] `npm run db:migrate` clean against real NeonDB
+- [x] `npm run db:migrate` clean against real NeonDB
 - [ ] PR opens green CI + green Vercel preview
 
 ---
