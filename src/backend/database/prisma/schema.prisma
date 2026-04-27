@@ -48,10 +48,12 @@ model User {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  accounts        Account[]
-  sessions        Session[]
-  profiles        Profile[]
-  charts          Chart[]
+  accounts          Account[]
+  sessions          Session[]
+  profiles          Profile[]
+  charts            Chart[]
+  astrologerProfile AstrologerProfile?  @relation("AstrologerProfileUser")
+  onboardedAstrologers AstrologerProfile[] @relation("AstrologerOnboardedBy")
 
   @@index([deletedAt])
 }
@@ -99,7 +101,76 @@ model VerificationToken {
 }
 
 // =========================
-// PROFILES (multi-profile per account)
+// ASTROLOGER PROFILE (admin-onboarded)
+// =========================
+
+enum KycType {
+  PAN
+  AADHAAR
+  PASSPORT
+  VOTER_ID
+  DRIVING_LICENSE
+}
+
+enum AstrologerStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+// Sensitive fields (kycNumber, bankAccountNumber, upiId) are stored
+// plain-text in Phase 1. Application-level encryption + audit trail land
+// before any production data flows in. NeonDB encrypts at rest; the gap
+// is in-app log/query exposure.
+model AstrologerProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation("AstrologerProfileUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Personal
+  fullName        String
+  phone           String
+  alternatePhone  String?
+
+  // Address
+  addressLine1    String
+  addressLine2    String?
+  city            String
+  state           String
+  postalCode      String
+  country         String   @default("IN")
+
+  // KYC
+  kycType         KycType
+  kycNumber       String   // sensitive — encrypt before prod
+  kycVerifiedAt   DateTime?
+  kycDocUrl       String?
+
+  // Professional
+  qualifications  String?  @db.Text
+  yearsExperience Int?
+  specialties     String[]
+  bio             String?  @db.Text
+
+  // Banking — sensitive — encrypt before prod
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  upiId             String?
+
+  status          AstrologerStatus @default(PENDING)
+  onboardedById   String?
+  onboardedBy     User?    @relation("AstrologerOnboardedBy", fields: [onboardedById], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([onboardedById])
+}
+
+// =========================
+// PROFILES (multi-profile per account, for chart computation)
 // =========================
 
 enum ProfileKind {

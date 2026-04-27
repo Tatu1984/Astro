@@ -1,6 +1,7 @@
 import { TopBar } from "@/frontend/components/portal/TopBar";
 import { CardLight } from "@/frontend/components/ui/CardLight";
 import { listUsers } from "@/backend/services/admin.service";
+import { AddAstrologerDialog } from "./add-astrologer-dialog";
 import { RoleControl } from "./role-control";
 
 const ROLE_BADGE: Record<string, string> = {
@@ -31,7 +32,7 @@ export default async function Page() {
         initials="A"
       />
       <div className="p-6 space-y-5 max-w-5xl">
-        <div className="flex flex-wrap gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
           {(["USER", "ASTROLOGER", "ADMIN", "MODERATOR"] as const).map((r) => (
             <div
               key={r}
@@ -40,6 +41,9 @@ export default async function Page() {
               {r}: <strong>{counts[r] ?? 0}</strong>
             </div>
           ))}
+          <div className="ml-auto">
+            <AddAstrologerDialog />
+          </div>
         </div>
 
         <CardLight className="!p-0 overflow-hidden">
