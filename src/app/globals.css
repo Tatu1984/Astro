@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* Astro (dark) palette */
+  --color-bg: #0e0a1f;
+  --color-surface: #1a1530;
+  --color-surface-2: #231a3d;
+  --color-card: #231a3d;
+  --color-border: #3a2f6b;
+  --color-ink: #e9e3ff;
+  --color-ink-muted: #998fc7;
+  --color-brand-gold: #f4c95d;
+  --color-brand-violet: #7c5cff;
+  --color-brand-aqua: #3ad6c2;
+  --color-brand-rose: #ff6b8a;
+
+  /* Light Ops palette */
+  --color-bg-light: #f7f5fb;
+  --color-surface-light: #ffffff;
+  --color-surface-2-light: #f0ecfa;
+  --color-border-light: #d8d2eb;
+  --color-ink-light: #1a1530;
+  --color-ink-muted-light: #5a4d8c;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* radius scale */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+:root {
+  color-scheme: dark;
+  --background: var(--color-bg);
+  --foreground: var(--color-ink);
+}
+
+html, body { background: var(--background); color: var(--foreground); }
+
+/* Light operations skin (admin) */
+.skin-light {
+  color-scheme: light;
+  --background: var(--color-bg-light);
+  --foreground: var(--color-ink-light);
+}
+
+/* Soft star backdrop reused across screens */
+@keyframes twinkle {
+  0%,100% { opacity: 0.35 }
+  50% { opacity: 0.85 }
+}
+
+.starfield::before {
+  content: "";
+  position: absolute; inset: 0;
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,0.85), transparent 60%),
+    radial-gradient(1px 1px at 82% 24%, rgba(255,255,255,0.7), transparent 60%),
+    radial-gradient(1.2px 1.2px at 33% 76%, rgba(255,255,255,0.7), transparent 60%),
+    radial-gradient(1px 1px at 67% 62%, rgba(255,255,255,0.6), transparent 60%),
+    radial-gradient(1.6px 1.6px at 92% 88%, rgba(255,255,255,0.7), transparent 60%),
+    radial-gradient(1.2px 1.2px at 8% 90%, rgba(255,255,255,0.6), transparent 60%),
+    radial-gradient(1.4px 1.4px at 50% 10%, rgba(255,255,255,0.8), transparent 60%),
+    radial-gradient(1px 1px at 26% 44%, rgba(255,255,255,0.55), transparent 60%),
+    radial-gradient(1.6px 1.6px at 74% 80%, rgba(255,255,255,0.8), transparent 60%);
+  background-repeat: no-repeat;
+  pointer-events: none;
+  animation: twinkle 4s ease-in-out infinite;
+}
+
+/* Aurora background — slow gradient sweep */
+@keyframes aurora {
+  0%   { transform: translate3d(-10%, -8%, 0) rotate(-6deg); }
+  50%  { transform: translate3d(8%,   6%, 0) rotate(8deg);   }
+  100% { transform: translate3d(-10%, -8%, 0) rotate(-6deg); }
+}
+
+.aurora::before {
+  content: "";
+  position: absolute; inset: -20%;
+  background:
+    radial-gradient(40% 35% at 30% 30%, rgba(124,92,255,0.45), transparent 70%),
+    radial-gradient(35% 30% at 70% 60%, rgba(244,201,93,0.35), transparent 70%),
+    radial-gradient(30% 25% at 50% 80%, rgba(58,214,194,0.3), transparent 70%);
+  filter: blur(40px);
+  animation: aurora 18s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Chart wheel rotate hint */
+@keyframes slow-rotate { to { transform: rotate(360deg); } }
+.chart-rotate { animation: slow-rotate 90s linear infinite; transform-origin: center; }
+
+/* Shimmer for ShinyText-like accent */
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.shiny {
+  background: linear-gradient(
+    90deg,
+    var(--color-brand-gold) 0%,
+    #fff5cc 30%,
+    var(--color-brand-gold) 60%,
+    #fff5cc 80%,
+    var(--color-brand-gold) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 6s linear infinite;
+}
+
+/* Decrypt-style flicker */
+@keyframes decrypt-pulse {
+  0%, 100% { filter: blur(0); opacity: 1; }
+  20% { filter: blur(2px); opacity: 0.85; }
+  40% { filter: blur(0); opacity: 1; }
+}
+.decrypted { animation: decrypt-pulse 2.4s ease-out 1; }
+
+/* Count-up reveal */
+@keyframes count-rise {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.countup { animation: count-rise 700ms cubic-bezier(0.22,1,0.36,1) both; }
+
+/* Tilt on hover */
+.tilt { transition: transform 300ms cubic-bezier(0.22,1,0.36,1); }
+.tilt:hover { transform: perspective(800px) rotateX(3deg) rotateY(-3deg) translateY(-2px); }
+
+/* Scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--color-border) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 999px; }
