@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 
@@ -13,6 +14,8 @@ const TEST_ACCOUNTS = [
   { email: "user1@astro.local", password: "User1@2026!" },
   { email: "user2@astro.local", password: "User2@2026!" },
 ];
+
+const SHOW_DEV_HINTS = process.env.NEXT_PUBLIC_SHOW_DEV_HINTS === "1";
 
 export function LoginForm() {
   const router = useRouter();
@@ -90,25 +93,34 @@ export function LoginForm() {
         </Button>
       </form>
 
-      <div className="border-t border-[var(--color-border)] pt-5">
-        <p className="text-xs uppercase tracking-wider text-[var(--color-ink-muted)] mb-3">
-          Dev accounts (click to fill)
-        </p>
-        <ul className="space-y-1.5">
-          {TEST_ACCOUNTS.map((a) => (
-            <li key={a.email}>
-              <button
-                type="button"
-                onClick={() => fill(a)}
-                className="w-full text-left rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-ink)] transition-colors"
-              >
-                <span className="font-medium">{a.email}</span>
-                <span className="ml-2 text-[var(--color-ink-muted)]">/ {a.password}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <p className="text-center text-sm text-[var(--color-ink-muted)]">
+        Don&apos;t have an account?{" "}
+        <Link href="/register" className="text-[var(--color-brand-gold)] hover:underline">
+          Create one
+        </Link>
+      </p>
+
+      {SHOW_DEV_HINTS ? (
+        <div className="border-t border-[var(--color-border)] pt-5">
+          <p className="text-xs uppercase tracking-wider text-[var(--color-ink-muted)] mb-3">
+            Dev accounts (click to fill)
+          </p>
+          <ul className="space-y-1.5">
+            {TEST_ACCOUNTS.map((a) => (
+              <li key={a.email}>
+                <button
+                  type="button"
+                  onClick={() => fill(a)}
+                  className="w-full text-left rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-ink)] transition-colors"
+                >
+                  <span className="font-medium">{a.email}</span>
+                  <span className="ml-2 text-[var(--color-ink-muted)]">/ {a.password}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

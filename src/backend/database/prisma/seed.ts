@@ -3,6 +3,7 @@
  * Idempotent: safe to re-run; existing users keep their charts.
  */
 
+import type { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 import { prisma } from "../client";
@@ -11,6 +12,7 @@ interface SeedAccount {
   email: string;
   password: string;
   name: string;
+  role: UserRole;
   profile: {
     fullName: string;
     birthDateUtc: string; // ISO
@@ -26,6 +28,7 @@ const ACCOUNTS: SeedAccount[] = [
     email: "admin@astro.local",
     password: "Admin@2026!",
     name: "Admin User",
+    role: "ADMIN",
     profile: {
       fullName: "Admin",
       birthDateUtc: "1990-05-15T14:30:00Z",
@@ -39,6 +42,7 @@ const ACCOUNTS: SeedAccount[] = [
     email: "user1@astro.local",
     password: "User1@2026!",
     name: "Test User One",
+    role: "USER",
     profile: {
       fullName: "User One",
       birthDateUtc: "1988-09-22T03:15:00Z",
@@ -52,6 +56,7 @@ const ACCOUNTS: SeedAccount[] = [
     email: "user2@astro.local",
     password: "User2@2026!",
     name: "Test User Two",
+    role: "USER",
     profile: {
       fullName: "User Two",
       birthDateUtc: "1995-12-03T09:45:00Z",
@@ -71,10 +76,12 @@ async function upsertAccount(acc: SeedAccount) {
       email: acc.email,
       name: acc.name,
       passwordHash,
+      role: acc.role,
     },
     update: {
       name: acc.name,
       passwordHash, // refresh in case password constants change between seeds
+      role: acc.role,
     },
   });
 
