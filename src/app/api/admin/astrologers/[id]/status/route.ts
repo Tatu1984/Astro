@@ -2,23 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
-import {
-  AstrologerError,
-  createAstrologerWithProfile,
-  listAstrologers,
-} from "@/backend/services/astrologer.service";
-import { CreateAstrologerSchema } from "@/backend/validators/astrologer.validator";
+import { AstrologerError, setAstrologerStatus } from "@/backend/services/astrologer.service";
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (session.user.role !== "ADMIN") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+const BodySchema = z.object({
+  status: z.enum(["ACTIVE", "SUSPENDED"]),
+});
 
-  const astrologers = await listAstrologers();
-  return NextResponse.json({ astrologers });
-}
-
-export async function POST(req: NextRequest) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (session.user.role !== "ADMIN") return NextResponse.json({ error: "forbidden" }, { status: 403 });
@@ -30,7 +23,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = CreateAstrologerSchema.safeParse(body);
+  const parsed = BodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation failed", details: z.treeifyError(parsed.error) },
@@ -38,9 +31,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const { id } = await params;
+
   try {
-    const user = await createAstrologerWithProfile(parsed.data, session.user.id);
-    return NextResponse.json({ user }, { status: 201 });
+    const profile = await setAstrologerStatus(id, parsed.data.status);
+    return NextResponse.json({ profile });
   } catch (err) {
     if (err instanceof AstrologerError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

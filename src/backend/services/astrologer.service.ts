@@ -1,3 +1,4 @@
+import type { AstrologerStatus, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 import { prisma } from "@/backend/database/client";
@@ -9,6 +10,33 @@ export class AstrologerError extends Error {
     this.name = "AstrologerError";
   }
 }
+
+// Sensitive fields excluded from list/detail-safe responses. Sensitive
+// data is only emitted from getAstrologerDetail (admin-only); never logged.
+const SAFE_PROFILE_SELECT = {
+  id: true,
+  fullName: true,
+  phone: true,
+  city: true,
+  state: true,
+  country: true,
+  kycType: true,
+  qualifications: true,
+  yearsExperience: true,
+  specialties: true,
+  bio: true,
+  status: true,
+  createdAt: true,
+  user: {
+    select: { id: true, email: true, role: true },
+  },
+} satisfies Prisma.AstrologerProfileSelect;
+
+const STATUS_TRANSITIONS: Record<AstrologerStatus, AstrologerStatus[]> = {
+  PENDING: ["ACTIVE", "SUSPENDED"],
+  ACTIVE: ["SUSPENDED"],
+  SUSPENDED: ["ACTIVE"],
+};
 
 function emptyToUndefined<T extends string | undefined>(v: T): T | undefined {
   return v === "" ? undefined : v;
@@ -86,5 +114,50 @@ export async function createAstrologerWithProfile(
     });
 
     return user;
+  });
+}
+
+export async function listAstrologers() {
+  return prisma.astrologerProfile.findMany({
+    select: SAFE_PROFILE_SELECT,
+    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+  });
+}
+
+/**
+ * Detail with sensitive fields. Use only in admin-gated handlers; never
+ * log the returned object directly.
+ */
+export async function getAstrologerDetail(id: string) {
+  const profile = await prisma.astrologerProfile.findUnique({
+    where: { id },
+    include: {
+      user: { select: { id: true, email: true, role: true, createdAt: true } },
+      onboardedBy: { select: { id: true, email: true, name: true } },
+    },
+  });
+  if (!profile) throw new AstrologerError(404, "astrologer not found");
+  return profile;
+}
+
+export async function setAstrologerStatus(id: string, newStatus: AstrologerStatus) {
+  const current = await prisma.astrologerProfile.findUnique({
+    where: { id },
+    select: { id: true, status: true },
+  });
+  if (!current) throw new AstrologerError(404, "astrologer not found");
+
+  const allowed = STATUS_TRANSITIONS[current.status];
+  if (!allowed.includes(newStatus)) {
+    throw new AstrologerError(
+      400,
+      `cannot transition from ${current.status} to ${newStatus}`,
+    );
+  }
+
+  return prisma.astrologerProfile.update({
+    where: { id },
+    data: { status: newStatus },
+    select: SAFE_PROFILE_SELECT,
   });
 }
