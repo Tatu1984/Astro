@@ -6,7 +6,8 @@ const EnvSchema = z.object({
   // Database (NeonDB Postgres) — Phase 0
   DATABASE_URL: z.string().url(),
 
-  // Auth — Phase 1
+  // Auth — Phase 1 (Auth.js v5 reads AUTH_SECRET; legacy alias kept)
+  AUTH_SECRET: z.string().min(32).optional(),
   NEXTAUTH_SECRET: z.string().min(32).optional(),
   NEXTAUTH_URL: z.string().url().optional(),
 

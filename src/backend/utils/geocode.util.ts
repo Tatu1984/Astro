@@ -1,0 +1,64 @@
+// Server-side geocoder using OpenStreetMap Nominatim. No API key, no signup.
+// Fair-use policy: ~1 req/sec, must set a User-Agent.
+// https://operations.osmfoundation.org/policies/nominatim/
+
+const NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search";
+const USER_AGENT = "AstroApp/0.1 (https://github.com/Tatu1984/Astro)";
+
+export interface GeocodeResult {
+  query: string;
+  displayName: string;
+  latitude: number;
+  longitude: number;
+  countryCode?: string;
+}
+
+class GeocodeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GeocodeError";
+  }
+}
+
+export async function geocode(query: string): Promise<GeocodeResult> {
+  const trimmed = query.trim();
+  if (!trimmed) throw new GeocodeError("empty geocode query");
+
+  const url = new URL(NOMINATIM_BASE);
+  url.searchParams.set("q", trimmed);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("addressdetails", "1");
+
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": USER_AGENT,
+      Accept: "application/json",
+    },
+    cache: "force-cache",
+  });
+
+  if (!res.ok) {
+    throw new GeocodeError(`nominatim ${res.status}: ${await res.text().catch(() => res.statusText)}`);
+  }
+
+  const rows = (await res.json()) as Array<{
+    lat: string;
+    lon: string;
+    display_name: string;
+    address?: { country_code?: string };
+  }>;
+
+  if (!rows.length) throw new GeocodeError(`no results for "${trimmed}"`);
+
+  const row = rows[0];
+  return {
+    query: trimmed,
+    displayName: row.display_name,
+    latitude: Number(row.lat),
+    longitude: Number(row.lon),
+    countryCode: row.address?.country_code?.toUpperCase(),
+  };
+}
+
+export { GeocodeError };

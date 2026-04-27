@@ -1,5 +1,7 @@
 // Prisma 7 — datasource URL is provided via prisma.config.ts (no `url` here).
-// Models will be added in Phase 1 (User, AuthIdentity, Session, Profile, Chart per SoW §10).
+// Phase 1 slice of SoW §10: User/Account/Session/VerificationToken (Auth.js
+// adapter shape) + Profile + Chart. Other tables (Subscription, Post,
+// Notification, Embedding, etc.) land in later phases.
 
 generator client {
   provider        = "prisma-client-js"
@@ -9,4 +11,177 @@ generator client {
 datasource db {
   provider   = "postgresql"
   extensions = [pgvector(map: "vector")]
+}
+
+// =========================
+// AUTH (Auth.js v5 adapter shape)
+// =========================
+
+enum UserRole {
+  USER
+  ASTROLOGER
+  ADMIN
+  MODERATOR
+}
+
+enum AstroSystem {
+  WESTERN
+  VEDIC
+  BOTH
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String?   @unique
+  emailVerified   DateTime?
+  name            String?
+  image           String?
+  passwordHash    String?
+  phone           String?   @unique
+  role            UserRole  @default(USER)
+  systemPref      AstroSystem @default(BOTH)
+  locale          String    @default("en")
+  timezone        String?
+  bio             String?
+  referralCode    String    @unique @default(cuid())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  accounts        Account[]
+  sessions        Session[]
+  profiles        Profile[]
+  charts          Chart[]
+
+  @@index([deletedAt])
+}
+
+// OAuth identities — Auth.js calls these "Account"
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  type              String   // "oauth" | "email" | "credentials"
+  provider          String   // "google" | "apple" | "facebook" | "credentials"
+  providerAccountId String
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?  @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// =========================
+// PROFILES (multi-profile per account)
+// =========================
+
+enum ProfileKind {
+  SELF
+  PARTNER
+  CHILD
+  FRIEND
+  CELEBRITY
+  OTHER
+}
+
+model Profile {
+  id          String      @id @default(cuid())
+  userId      String
+  kind        ProfileKind
+  fullName    String
+  birthDate   DateTime
+  birthTime   DateTime?
+  unknownTime Boolean     @default(false)
+  birthPlace  String
+  latitude    Decimal     @db.Decimal(9, 6)
+  longitude   Decimal     @db.Decimal(9, 6)
+  timezone    String
+  gender      String?
+  notes       String?
+  isPrivate   Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  charts Chart[]
+
+  @@index([userId])
+  @@index([kind])
+}
+
+// =========================
+// CHARTS (deterministic compute output, cached by inputHash)
+// =========================
+
+enum HouseSystem {
+  PLACIDUS
+  WHOLE_SIGN
+  KOCH
+  EQUAL
+  VEDIC_EQUAL
+}
+
+enum ChartKind {
+  NATAL
+  TRANSIT
+  PROGRESSED_SECONDARY
+  PROGRESSED_SOLAR_ARC
+  SOLAR_RETURN
+  LUNAR_RETURN
+  ANNUAL_VARSHA
+  COMPOSITE
+  DAVISON
+  HORARY
+  ELECTIONAL
+  DIVISIONAL
+}
+
+model Chart {
+  id           String      @id @default(cuid())
+  userId       String
+  profileId    String?
+  kind         ChartKind
+  system       AstroSystem
+  houseSystem  HouseSystem
+  divisionalIx Int?
+  computedAt   DateTime    @default(now())
+  payload      Json
+  inputHash    String
+  expiresAt    DateTime?
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([profileId])
+  @@index([kind, system])
+  @@unique([userId, kind, system, houseSystem, inputHash])
 }
