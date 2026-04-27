@@ -65,51 +65,56 @@
 ## Phase 1 — Auth, Profiles, Chart Compute
 
 ### Database
-- [ ] Add `User`, `AuthIdentity`, `Session`, `Profile`, `Chart` to `schema.prisma` (per SoW §10)
-- [ ] `pnpm prisma migrate dev --name auth_profile_chart`
-- [ ] `seed.ts` for plans + glossary stub
+- [x] Add `User`, `Account`, `Session`, `VerificationToken`, `Profile`, `Chart` to `schema.prisma` (Auth.js shape, SoW §10 phase-1 subset)
+- [x] `prisma migrate dev --name auth_profile_chart`
+- [x] `prisma migrate dev --name chart_unique_user_input` (cache key)
+- [ ] `seed.ts` for Plan tier rows + glossary stub
 
 ### Auth
-- [ ] `pnpm add next-auth@5` + adapter for Prisma
-- [ ] Email/password login + register (start)
-- [ ] Google OAuth provider
-- [ ] Apple OAuth provider
-- [ ] Facebook OAuth provider
-- [ ] Phone OTP (provider TBD: Twilio Verify / MSG91)
-- [ ] Session middleware in `src/backend/api/middleware.ts`
+- [x] `npm i next-auth@beta @auth/prisma-adapter bcryptjs`
+- [x] Email/password signup (POST /api/auth/signup) + Credentials login
+- [x] JWT session strategy; `auth()` helper exposed
+- [x] `/api/charts/natal` gated on `session.user.id`
+- [ ] Google OAuth provider (need GOOGLE_CLIENT_ID + SECRET)
+- [ ] Apple OAuth provider (needs paid Apple Developer account)
+- [ ] Facebook OAuth provider (needs Meta Dev app)
+- [ ] Phone OTP (Twilio Verify or MSG91 — defer)
+- [ ] Login/Register UI pages + form components
 
 ### Profiles
-- [ ] Birth-data form (date/time/place/unknown-time flag)
-- [ ] OpenCage geocoding util in `src/backend/utils/geocode.util.ts`
+- [ ] Birth-data form (date/time/place/unknown-time flag) on user portal
+- [x] Geocoding util in `src/backend/utils/geocode.util.ts` (OSM Nominatim, free, no key)
 - [ ] `POST /api/profiles` — create Profile (Zod-validated)
 - [ ] `GET /api/profiles` — list user's profiles
 - [ ] `PATCH /api/profiles/:id` — edit
 - [ ] Profile management UI in user portal
+- [ ] Leaflet + leaflet-geosearch map picker for birth-place
 
 ### Python compute microservice
-- [ ] Decide host: Render or Fly.io
-- [ ] Bootstrap FastAPI project: `services/compute/` (or separate repo)
-- [ ] `pip` deps: `pyswisseph`, `kerykeion`, `jyotisha`, `flatlib`
-- [ ] `POST /natal` endpoint → returns deterministic chart JSON
-- [ ] Internal auth: shared secret in header
-- [ ] Deploy to Render/Fly free tier
-- [ ] Smoke test from local Next.js
+- [x] Decide host: Render free tier
+- [x] Bootstrap FastAPI project — separate repo: `Tatu1984/Astro-Compute`
+- [x] `pip` deps: `pyswisseph` (Moshier mode); add `kerykeion`/`jyotisha`/`flatlib` when Vedic features land
+- [x] `POST /natal` endpoint → deterministic chart JSON (planets, houses, asc, mc)
+- [x] Internal auth: `X-Compute-Secret` header
+- [x] Deployed at https://astro-compute.onrender.com (Python 3.12.5 pinned)
+- [x] Smoke tested end-to-end from Next.js
 
 ### Chart pipeline
-- [ ] `chart.service.ts` calls Python micro
-- [ ] `chart.repository.ts` persists to `Chart` table with `inputHash` cache
-- [ ] `POST /api/charts/natal` route handler
-- [ ] Wire `ChartWheel` to real chart JSON (replace mock)
+- [x] `chart.service.ts` calls Python micro with shared-secret header
+- [x] `chart.repository.ts` upserts to `Chart` table on `(userId, kind, system, houseSystem, inputHash)`
+- [x] `POST /api/charts/natal` route handler (auth-gated, Zod-validated)
+- [x] Cache verified: 2nd identical request returns `cached=true` without hitting Render
+- [ ] Wire `ChartWheel` UI to call `/api/charts/natal` (replace mock)
 - [ ] North Indian style SVG renderer
 - [ ] South Indian style SVG renderer
 - [ ] Aspect grid component
 - [ ] Divisional charts D1–D60 (pick subset for v1)
-- [ ] House systems toggle (Placidus / Whole Sign / Koch / Equal / Vedic Equal)
+- [ ] House systems toggle (Placidus / Whole Sign / Koch / Equal / Vedic Equal) in UI
 
 ### Phase 1 done when
-- [ ] Signed-in user submits birth data
-- [ ] Real natal chart renders on screen (Western + Vedic)
-- [ ] Chart cached on second view (no recompute)
+- [x] Signed-in user can call `/api/charts/natal` and get a real chart (verified via curl)
+- [ ] Real natal chart **renders on screen** (Western + Vedic) via UI
+- [x] Chart cached on second view (no recompute) — verified
 
 ---
 
