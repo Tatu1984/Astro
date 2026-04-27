@@ -1,6 +1,9 @@
 // Server-side geocoder using OpenStreetMap Nominatim. No API key, no signup.
 // Fair-use policy: ~1 req/sec, must set a User-Agent.
 // https://operations.osmfoundation.org/policies/nominatim/
+// tz-lookup is large (~70KB) — keep it server-side only.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const tzLookup: (lat: number, lng: number) => string = require("tz-lookup");
 
 const NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search";
 const USER_AGENT = "AstroApp/0.1 (https://github.com/Tatu1984/Astro)";
@@ -10,7 +13,12 @@ export interface GeocodeResult {
   displayName: string;
   latitude: number;
   longitude: number;
+  timezone: string;
   countryCode?: string;
+}
+
+export function tzAt(latitude: number, longitude: number): string {
+  return tzLookup(latitude, longitude);
 }
 
 class GeocodeError extends Error {
@@ -52,11 +60,14 @@ export async function geocode(query: string): Promise<GeocodeResult> {
   if (!rows.length) throw new GeocodeError(`no results for "${trimmed}"`);
 
   const row = rows[0];
+  const latitude = Number(row.lat);
+  const longitude = Number(row.lon);
   return {
     query: trimmed,
     displayName: row.display_name,
-    latitude: Number(row.lat),
-    longitude: Number(row.lon),
+    latitude,
+    longitude,
+    timezone: tzLookup(latitude, longitude),
     countryCode: row.address?.country_code?.toUpperCase(),
   };
 }
