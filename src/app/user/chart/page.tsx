@@ -1,64 +1,123 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { Plus, Sparkles } from "lucide-react";
+
+import { auth } from "@/auth";
+import { resolveNatal } from "@/backend/services/chart.service";
+import { listUserProfiles } from "@/backend/services/profile.service";
 import { ChartWheel } from "@/frontend/components/astro/ChartWheel";
-import { Card } from "@/frontend/components/ui/Card";
-import { Button } from "@/frontend/components/ui/Button";
-import { Badge } from "@/frontend/components/ui/Badge";
 import { TopBar } from "@/frontend/components/portal/TopBar";
-import { Sparkles } from "lucide-react";
+import { Badge } from "@/frontend/components/ui/Badge";
+import { Button } from "@/frontend/components/ui/Button";
+import { Card } from "@/frontend/components/ui/Card";
 
-const PLANETS = [
-  { name: "Sun",     pos: "Cancer 22°",  house: "1H" },
-  { name: "Moon",    pos: "Pisces 04°",  house: "9H · Revati" },
-  { name: "Mercury", pos: "Cancer 28°",  house: "1H" },
-  { name: "Venus",   pos: "Taurus 09°",  house: "11H" },
-  { name: "Mars",    pos: "Leo 17°",     house: "2H" },
-  { name: "Jupiter", pos: "Sag 22°",     house: "6H · R" },
-  { name: "Saturn",  pos: "Aqua 03°",    house: "8H" },
-  { name: "Rahu",    pos: "Gem 14°",     house: "12H" },
-];
+import { ProfileSwitcher } from "./profile-switcher";
 
-const DASHA = [
-  { name: "Sat", years: 19, frac: 0.85 },
-  { name: "Mer", years: 17, frac: 0.55 },
-  { name: "Ket", years: 7,  frac: 0.30 },
-  { name: "Ven", years: 20, frac: 0.92 },
-  { name: "Sun", years: 6,  frac: 0.25 },
-  { name: "Moo", years: 10, frac: 0.40 },
-];
+const DIVISIONAL_TABS = ["D1 Rasi", "D9 Navamsa", "D10", "D12", "D60", "Transits"];
 
-const ASPECT_GRID = Array.from({ length: 64 }).map((_, i) => {
-  const colors = [
-    "bg-[var(--color-brand-violet)]/55",
-    "bg-[var(--color-brand-aqua)]/55",
-    "bg-[var(--color-brand-gold)]/55",
-    "bg-[var(--color-brand-rose)]/55",
-    "bg-white/10",
-  ];
-  return colors[i % 5];
-});
+function fmtPlace(birthPlace: string) {
+  // first segment usually most informative; full string can be long
+  return birthPlace.split(",").slice(0, 2).join(",").trim();
+}
 
-export default function ChartWorkspace() {
+export default async function ChartWorkspace({
+  searchParams,
+}: {
+  searchParams: Promise<{ profile?: string }>;
+}) {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+
+  const profiles = await listUserProfiles(session.user.id);
+
+  if (profiles.length === 0) {
+    return (
+      <>
+        <TopBar title="Chart" subtitle="No profiles yet" right={<EmptyAddButton />} />
+        <div className="p-6">
+          <Card className="!p-10 text-center max-w-2xl">
+            <h2 className="text-xl font-semibold text-white">No birth profile yet</h2>
+            <p className="mt-2 text-sm text-white/60 max-w-md mx-auto">
+              Add your birth date, time and place — your natal chart computes automatically.
+            </p>
+            <div className="mt-6 flex justify-center">
+              <Link href="/user/profile">
+                <Button variant="gold" size="md">
+                  <Plus className="h-4 w-4" /> Add a birth profile
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </>
+    );
+  }
+
+  const params = await searchParams;
+  const active = profiles.find((p) => p.id === params.profile) ?? profiles[0];
+
+  let chart: Awaited<ReturnType<typeof resolveNatal>>["chart"] | null = null;
+  let chartError: string | null = null;
+  try {
+    const result = await resolveNatal({
+      userId: session.user.id,
+      profileId: active.id,
+      request: {
+        birth_datetime_utc: active.birthDate.toISOString(),
+        latitude: Number(active.latitude),
+        longitude: Number(active.longitude),
+        house_system: "PLACIDUS",
+        system: "BOTH",
+      },
+    });
+    chart = result.chart;
+  } catch (err) {
+    chartError = err instanceof Error ? err.message : String(err);
+  }
+
+  const ascSign = chart ? signFor(chart.ascendant_deg) : "—";
+  const initials = active.fullName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
+
   return (
     <>
       <TopBar
-        title="Maya · Natal · Vedic"
-        subtitle="Whole sign houses · Lahiri ayanamsa"
+        title={`${active.fullName} · Natal`}
+        subtitle={`${fmtPlace(active.birthPlace)} · Placidus houses · Tropical`}
         right={
-          <div className="hidden md:flex items-center gap-2">
-            <Badge tone="violet">D1 Rasi</Badge>
-            <Button size="sm" variant="outline">Switch profile</Button>
+          <div className="flex items-center gap-2">
+            <Badge tone="violet">D1</Badge>
+            <ProfileSwitcher
+              profiles={profiles.map((p) => ({ id: p.id, fullName: p.fullName }))}
+              activeId={active.id}
+            />
           </div>
         }
+        initials={initials}
       />
       <div className="p-6 space-y-6">
-        {/* div tabs */}
+        {chartError ? (
+          <div className="rounded-md border border-[var(--color-brand-rose)]/40 bg-[var(--color-brand-rose)]/10 px-4 py-3 text-sm text-white">
+            Chart compute error: {chartError}
+          </div>
+        ) : null}
+
+        {/* Divisional chart tabs — only D1 is wired now; others are placeholders */}
         <div className="flex flex-wrap items-center gap-2">
-          {["D1 Rasi", "D9 Navamsa", "D10", "D12", "D60", "Transits"].map((t, i) => (
+          {DIVISIONAL_TABS.map((t, i) => (
             <button
               key={t}
+              type="button"
+              disabled={i !== 0}
+              title={i === 0 ? undefined : "Available in Phase 2"}
               className={
                 i === 0
                   ? "px-3 py-1.5 text-xs font-semibold rounded-md bg-[var(--color-brand-violet)] text-white"
-                  : "px-3 py-1.5 text-xs rounded-md bg-[var(--color-card)] border border-[var(--color-border)] text-white/70 hover:text-white"
+                  : "px-3 py-1.5 text-xs rounded-md bg-[var(--color-card)] border border-[var(--color-border)] text-white/35 cursor-not-allowed"
               }
             >
               {t}
@@ -67,58 +126,117 @@ export default function ChartWorkspace() {
         </div>
 
         <div className="grid lg:grid-cols-[1fr_360px] gap-6">
-          {/* wheel + aspect grid */}
+          {/* wheel + axes */}
           <div className="space-y-6">
             <Card accent="gold" className="grid place-items-center !py-10">
               <ChartWheel size={420} />
             </Card>
-            <Card>
-              <h3 className="font-semibold text-[var(--color-brand-gold)] mb-4">Aspect grid</h3>
-              <div className="grid grid-cols-8 gap-1.5">
-                {ASPECT_GRID.map((c, i) => (
-                  <div key={i} className={`aspect-square rounded ${c}`} />
-                ))}
-              </div>
-              <p className="text-xs text-white/50 mt-3">8 × 8 planet-vs-planet · click a cell to inspect</p>
-            </Card>
+
+            {chart ? (
+              <Card>
+                <h3 className="font-semibold text-[var(--color-brand-gold)] mb-3">Axes &amp; cusps</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                  <Axis label="Ascendant" deg={chart.ascendant_deg} />
+                  <Axis label="Midheaven (MC)" deg={chart.midheaven_deg} />
+                  <Axis label="Descendant" deg={(chart.ascendant_deg + 180) % 360} />
+                  <Axis label="IC" deg={(chart.midheaven_deg + 180) % 360} />
+                </div>
+                <div className="mt-5">
+                  <p className="text-xs uppercase tracking-wider text-white/40 mb-2">House cusps</p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
+                    {chart.houses.map((h, i) => (
+                      <div
+                        key={i}
+                        className="rounded border border-[var(--color-border)] bg-white/5 px-2 py-1.5 text-white/75"
+                      >
+                        <span className="text-white/45 mr-1">H{i + 1}</span>
+                        {h.toFixed(2)}° {signFor(h)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            ) : null}
           </div>
 
-          {/* planet table + dasha */}
+          {/* planet table + actions */}
           <div className="space-y-6">
             <Card>
-              <h3 className="font-semibold text-[var(--color-brand-gold)] mb-4">Planets</h3>
-              <ul className="text-sm divide-y divide-[var(--color-border)]">
-                {PLANETS.map((p) => (
-                  <li key={p.name} className="flex items-center justify-between py-2.5">
-                    <span className="text-white">{p.name}</span>
-                    <span className="text-white/60 text-xs tabular-nums">{p.pos} · {p.house}</span>
-                  </li>
-                ))}
-              </ul>
+              <h3 className="font-semibold text-[var(--color-brand-gold)] mb-3">Planets</h3>
+              {chart ? (
+                <ul className="text-sm divide-y divide-[var(--color-border)]">
+                  {chart.planets.map((p) => {
+                    const retro = p.speed_deg_per_day < 0;
+                    const degInSign = p.longitude_deg % 30;
+                    return (
+                      <li key={p.name} className="flex items-center justify-between py-2.5 gap-2">
+                        <div className="flex flex-col">
+                          <span className="text-white">{p.name}</span>
+                          <span className="text-[10px] text-white/40 uppercase tracking-wider">
+                            H{p.house ?? "—"}{retro ? " · R" : ""}
+                          </span>
+                        </div>
+                        <span className="text-white/65 text-xs tabular-nums text-right">
+                          {p.sign}<br/>
+                          <span className="text-white/45">{degInSign.toFixed(2)}°</span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-sm text-white/55">Couldn&apos;t compute the chart. {chartError}</p>
+              )}
+              <p className="mt-3 text-[10px] text-white/35">
+                Asc: {ascSign} {(chart?.ascendant_deg ?? 0 % 30).toFixed(2)}° · cached by inputHash{" "}
+                {chart?.input_hash.slice(0, 10)}…
+              </p>
             </Card>
+
             <Card accent="violet">
-              <h3 className="font-semibold text-[var(--color-brand-gold)] mb-4">Vimshottari Dasha</h3>
-              <div className="space-y-2.5">
-                {DASHA.map((d) => (
-                  <div key={d.name} className="flex items-center gap-2 text-xs">
-                    <span className="w-10 text-white/60">{d.name}</span>
-                    <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-[var(--color-brand-violet)] to-[var(--color-brand-aqua)]"
-                        style={{ width: `${d.frac * 100}%` }}
-                      />
-                    </div>
-                    <span className="w-10 text-right tabular-nums text-white/70">{d.years}y</span>
-                  </div>
-                ))}
-              </div>
+              <h3 className="font-semibold text-[var(--color-brand-gold)] mb-2">Vimshottari Dasha</h3>
+              <p className="text-xs text-white/55">
+                Vedic dasha periods compute in Phase 2 alongside Kerykeion / Jyotisha integration.
+              </p>
             </Card>
-            <Button variant="gold" className="w-full">
+
+            <Button variant="gold" className="w-full" disabled title="Available in Phase 2">
               <Sparkles className="h-4 w-4" /> AI · Explain my chart
             </Button>
           </div>
         </div>
       </div>
     </>
+  );
+}
+
+const SIGNS = [
+  "Aries", "Taurus", "Gemini", "Cancer",
+  "Leo", "Virgo", "Libra", "Scorpio",
+  "Sagittarius", "Capricorn", "Aquarius", "Pisces",
+];
+
+function signFor(longitudeDeg: number): string {
+  const norm = ((longitudeDeg % 360) + 360) % 360;
+  return SIGNS[Math.floor(norm / 30)];
+}
+
+function Axis({ label, deg }: { label: string; deg: number }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-white/40">{label}</p>
+      <p className="text-sm text-white/85 tabular-nums">{deg.toFixed(2)}°</p>
+      <p className="text-[10px] text-white/45">{signFor(deg)}</p>
+    </div>
+  );
+}
+
+function EmptyAddButton() {
+  return (
+    <Link href="/user/profile">
+      <Button variant="gold" size="sm">
+        <Plus className="h-4 w-4" /> Add profile
+      </Button>
+    </Link>
   );
 }
