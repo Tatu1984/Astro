@@ -7,7 +7,6 @@ import { resolveNatal } from "@/backend/services/chart.service";
 import { ChartWheel } from "@/frontend/components/astro/ChartWheel";
 import { Aurora } from "@/frontend/components/effects/Aurora";
 import { CountUp } from "@/frontend/components/effects/CountUp";
-import { SignOutButton } from "@/frontend/components/portal/SignOutButton";
 import { TopBar } from "@/frontend/components/portal/TopBar";
 import { Badge } from "@/frontend/components/ui/Badge";
 import { Button } from "@/frontend/components/ui/Button";
@@ -88,12 +87,7 @@ export default async function UserToday() {
       <TopBar
         title={user.name ? `Welcome, ${user.name}` : "Welcome"}
         subtitle={profile ? `${profile.fullName} · ${profile.birthPlace}` : user.email ?? ""}
-        right={
-          <div className="flex items-center gap-3">
-            <Badge tone="aqua">● Online</Badge>
-            <SignOutButton />
-          </div>
-        }
+        right={<Badge tone="aqua">● Online</Badge>}
         initials={initialsFor(user.name ?? user.email)}
       />
       <div className="p-6 space-y-6">
