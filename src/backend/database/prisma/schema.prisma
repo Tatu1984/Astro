@@ -53,6 +53,7 @@ model User {
   profiles          Profile[]
   charts            Chart[]
   predictions       Prediction[]        @relation("UserPredictions")
+  chatSessions      AiChatSession[]     @relation("UserChatSessions")
   astrologerProfile AstrologerProfile?  @relation("AstrologerProfileUser")
   onboardedAstrologers AstrologerProfile[] @relation("AstrologerOnboardedBy")
 
@@ -202,9 +203,10 @@ model Profile {
   updatedAt   DateTime    @updatedAt
   deletedAt   DateTime?
 
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  charts      Chart[]
-  predictions Prediction[]
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  charts         Chart[]
+  predictions    Prediction[]
+  chatSessions   AiChatSession[]
 
   @@index([userId])
   @@index([kind])
@@ -250,9 +252,10 @@ model Chart {
   inputHash    String
   expiresAt    DateTime?
 
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  profile     Profile?     @relation(fields: [profileId], references: [id], onDelete: SetNull)
-  predictions Prediction[]
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile      Profile?        @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  predictions  Prediction[]
+  chatSessions AiChatSession[]
 
   @@index([userId])
   @@index([profileId])
@@ -299,6 +302,53 @@ model Prediction {
   @@index([userId, periodStart])
   @@index([profileId, kind])
   @@unique([userId, profileId, kind, periodStart])
+}
+
+// User <-> AiChatSession relation already declared above the Prediction
+// block; nothing to do here.
+
+// =========================
+// AI CHAT WITH CHART
+// =========================
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model AiChatSession {
+  id        String   @id @default(cuid())
+  userId    String
+  profileId String?
+  chartId   String?
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User            @relation("UserChatSessions", fields: [userId], references: [id], onDelete: Cascade)
+  profile  Profile?        @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  chart    Chart?          @relation(fields: [chartId], references: [id], onDelete: SetNull)
+  messages AiChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model AiChatMessage {
+  id           String   @id @default(cuid())
+  sessionId    String
+  role         ChatRole
+  content      String   @db.Text
+  llmProvider  String?
+  llmModel     String?
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  costUsdMicro Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  session AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
 }
 
 // =========================
