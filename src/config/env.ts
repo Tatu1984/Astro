@@ -18,6 +18,9 @@ const EnvSchema = z.object({
   // Geocoding — Phase 1
   OPENCAGE_API_KEY: z.string().optional(),
 
+  // Application-level field encryption (KYC, bank). 32 bytes base64.
+  ENCRYPTION_KEY: z.string().optional(),
+
   // LLM providers — Phase 2
   GEMINI_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),

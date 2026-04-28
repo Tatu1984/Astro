@@ -1,7 +1,8 @@
-import type { AstrologerStatus, Prisma } from "@prisma/client";
+import type { AstrologerProfile, AstrologerStatus, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 import { prisma } from "@/backend/database/client";
+import { decryptField, encryptField } from "@/backend/utils/crypto.util";
 import type { CreateAstrologerInput } from "@/backend/validators/astrologer.validator";
 
 export class AstrologerError extends Error {
@@ -96,7 +97,7 @@ export async function createAstrologerWithProfile(
         country: input.country,
 
         kycType: input.kycType,
-        kycNumber: input.kycNumber,
+        kycNumber: encryptField(input.kycNumber)!, // required field
 
         qualifications: emptyToUndefined(input.qualifications),
         yearsExperience: input.yearsExperience,
@@ -104,9 +105,9 @@ export async function createAstrologerWithProfile(
         bio: emptyToUndefined(input.bio),
 
         bankAccountName: emptyToUndefined(input.bankAccountName),
-        bankAccountNumber: emptyToUndefined(input.bankAccountNumber),
-        bankIfsc: emptyToUndefined(input.bankIfsc),
-        upiId: emptyToUndefined(input.upiId),
+        bankAccountNumber: encryptField(emptyToUndefined(input.bankAccountNumber)),
+        bankIfsc: encryptField(emptyToUndefined(input.bankIfsc)),
+        upiId: encryptField(emptyToUndefined(input.upiId)),
 
         status: "PENDING",
         onboardedById: actingAdminId,
@@ -124,6 +125,18 @@ export async function listAstrologers() {
   });
 }
 
+function decryptSensitiveFields<T extends Pick<AstrologerProfile, "kycNumber" | "bankAccountNumber" | "bankIfsc" | "upiId">>(
+  row: T,
+): T {
+  return {
+    ...row,
+    kycNumber: decryptField(row.kycNumber) ?? row.kycNumber,
+    bankAccountNumber: decryptField(row.bankAccountNumber),
+    bankIfsc: decryptField(row.bankIfsc),
+    upiId: decryptField(row.upiId),
+  };
+}
+
 /**
  * Detail with sensitive fields. Use only in admin-gated handlers; never
  * log the returned object directly.
@@ -137,7 +150,7 @@ export async function getAstrologerDetail(id: string) {
     },
   });
   if (!profile) throw new AstrologerError(404, "astrologer not found");
-  return profile;
+  return decryptSensitiveFields(profile);
 }
 
 /**
@@ -146,12 +159,14 @@ export async function getAstrologerDetail(id: string) {
  * responsible for verifying that session.user.id matches the userId.
  */
 export async function getOwnAstrologerProfile(userId: string) {
-  return prisma.astrologerProfile.findUnique({
+  const profile = await prisma.astrologerProfile.findUnique({
     where: { userId },
     include: {
       user: { select: { id: true, email: true, role: true, createdAt: true } },
     },
   });
+  if (!profile) return null;
+  return decryptSensitiveFields(profile);
 }
 
 export async function setAstrologerStatus(id: string, newStatus: AstrologerStatus) {

@@ -132,3 +132,193 @@ export { TransitError };
 export function transitPlanets(transit: TransitResponse): PlanetPosition[] {
   return transit.planets;
 }
+
+export interface UpcomingAspect {
+  transit: string;
+  aspect: TransitAspect["aspect"];
+  natal: string;
+  natalSign: string;
+  natalHouse: number | null;
+  daysFromNow: number;
+  peakDate: string; // ISO
+  currentOrb: number;
+}
+
+const ASPECT_ANGLES: ReadonlyArray<{ name: TransitAspect["aspect"]; angle: number; orb: number }> = [
+  { name: "conjunction", angle: 0, orb: 8 },
+  { name: "sextile", angle: 60, orb: 6 },
+  { name: "square", angle: 90, orb: 7 },
+  { name: "trine", angle: 120, orb: 7 },
+  { name: "opposition", angle: 180, orb: 8 },
+];
+
+/**
+ * Given the current transit positions and a natal chart, predict which
+ * aspects will go exact within `daysAhead` days. Uses current speed as a
+ * linear proxy — accurate for a few weeks, imprecise across retrograde
+ * stations (the next pass after a station is missed).
+ */
+export function predictUpcomingAspects(
+  transit: TransitResponse,
+  natal: NatalResponse,
+  daysAhead = 60,
+): UpcomingAspect[] {
+  const out: UpcomingAspect[] = [];
+  const now = new Date(transit.moment_utc).getTime();
+
+  for (const t of transit.planets) {
+    if (!NATAL_KEY.has(t.name)) continue;
+    if (Math.abs(t.speed_deg_per_day) < 0.001) continue; // stationary; skip
+
+    for (const n of natal.planets) {
+      if (!NATAL_KEY.has(n.name)) continue;
+
+      // Build a set of target longitudes per aspect (each aspect has two targets)
+      for (const a of ASPECT_ANGLES) {
+        const targets = [
+          (n.longitude_deg + a.angle) % 360,
+          (n.longitude_deg - a.angle + 360) % 360,
+        ];
+        for (const target of targets) {
+          // Direct distance from transit to target along its motion direction.
+          // Positive direction = forward along the zodiac.
+          const dirSpeed = t.speed_deg_per_day;
+          const sign = dirSpeed >= 0 ? 1 : -1;
+
+          // signed delta in [-180, 180] from transit toward target
+          const raw = ((target - t.longitude_deg + 540) % 360) - 180;
+          const movementToTarget = sign === 1 ? (raw < 0 ? raw + 360 : raw) : raw < 0 ? -raw : 360 - raw;
+          const days = movementToTarget / Math.abs(dirSpeed);
+
+          // Currently within orb? Then it's already "active" — daysFromNow = 0
+          // and peakDate is also "now" (very rough).
+          const currentSep = (() => {
+            const d = Math.abs(((t.longitude_deg - n.longitude_deg) % 360) + 360) % 360;
+            return d > 180 ? 360 - d : d;
+          })();
+          const inOrbNow = Math.abs(currentSep - a.angle) <= a.orb;
+
+          if (days >= 0 && days <= daysAhead) {
+            out.push({
+              transit: t.name,
+              aspect: a.name,
+              natal: n.name,
+              natalSign: n.sign,
+              natalHouse: n.house,
+              daysFromNow: Number(days.toFixed(1)),
+              peakDate: new Date(now + days * 24 * 60 * 60 * 1000).toISOString(),
+              currentOrb: Number((inOrbNow ? Math.abs(currentSep - a.angle) : days * Math.abs(dirSpeed)).toFixed(2)),
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Dedupe (same triple may come from both targets of the aspect — keep nearest)
+  const byKey = new Map<string, UpcomingAspect>();
+  for (const a of out) {
+    const key = `${a.transit}|${a.aspect}|${a.natal}`;
+    const prev = byKey.get(key);
+    if (!prev || a.daysFromNow < prev.daysFromNow) byKey.set(key, a);
+  }
+
+  // Significance prioritisation: outer transits to luminaries first.
+  return Array.from(byKey.values()).sort((a, b) => a.daysFromNow - b.daysFromNow);
+}
+
+export interface UpcomingCalendar {
+  generatedAt: string;
+  daysAhead: number;
+  events: UpcomingAspect[];
+}
+
+export async function buildCalendar(args: { natal: NatalResponse; daysAhead?: number }): Promise<UpcomingCalendar> {
+  const daysAhead = args.daysAhead ?? 60;
+  const transit = await computeTransit({ moment_utc: new Date().toISOString() });
+  const events = predictUpcomingAspects(transit, args.natal, daysAhead);
+  return { generatedAt: new Date().toISOString(), daysAhead, events };
+}
+
+export interface RetrogradeWindow {
+  planet: string;
+  startDate: string; // ISO
+  endDate: string; // ISO
+  status: "active" | "upcoming" | "ended";
+}
+
+const RETRO_CANDIDATES = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
+
+/**
+ * Sample compute /transit at daily intervals over a window and detect
+ * retrograde periods (negative speed). Returns one window per planet
+ * per direction-change pair.
+ *
+ * Cost: ~daysAhead+pastDays calls in parallel (Promise.all), warm Render
+ * handles ~100 in <2s. Free tier OK for the 90-day windows we use.
+ */
+export async function findRetrogradeWindows(args: {
+  daysAhead?: number;
+  daysPast?: number;
+  /** Sample every Nth day. Default 3 — Mercury retrogrades are 3 weeks so 3-day resolution is plenty. */
+  stepDays?: number;
+}): Promise<RetrogradeWindow[]> {
+  const daysAhead = args.daysAhead ?? 90;
+  const daysPast = args.daysPast ?? 30;
+  const step = args.stepDays ?? 3;
+
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const samples: number[] = [];
+  for (let d = -daysPast; d <= daysAhead; d += step) samples.push(now + d * dayMs);
+
+  const responses = await Promise.all(
+    samples.map((t) => computeTransit({ moment_utc: new Date(t).toISOString() })),
+  );
+
+  // For each candidate planet, walk the timeline looking for retrograde
+  // (speed < 0) spans. Record start/end and classify by today's position.
+  const windows: RetrogradeWindow[] = [];
+  for (const planet of RETRO_CANDIDATES) {
+    let inSpan = false;
+    let spanStartIdx = 0;
+    for (let i = 0; i < responses.length; i++) {
+      const p = responses[i].planets.find((q) => q.name === planet);
+      if (!p) continue;
+      const isRetro = p.speed_deg_per_day < 0;
+      if (isRetro && !inSpan) {
+        inSpan = true;
+        spanStartIdx = i;
+      } else if (!isRetro && inSpan) {
+        inSpan = false;
+        const start = new Date(samples[spanStartIdx]).toISOString();
+        const end = new Date(samples[i - 1]).toISOString();
+        windows.push({
+          planet,
+          startDate: start,
+          endDate: end,
+          status: classifyWindow(samples[spanStartIdx], samples[i - 1], now),
+        });
+      }
+    }
+    if (inSpan) {
+      // span runs past the end of our window
+      const start = new Date(samples[spanStartIdx]).toISOString();
+      const end = new Date(samples[samples.length - 1]).toISOString();
+      windows.push({
+        planet,
+        startDate: start,
+        endDate: end,
+        status: classifyWindow(samples[spanStartIdx], samples[samples.length - 1], now),
+      });
+    }
+  }
+
+  return windows.sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate));
+}
+
+function classifyWindow(start: number, end: number, now: number): RetrogradeWindow["status"] {
+  if (now < start) return "upcoming";
+  if (now > end) return "ended";
+  return "active";
+}
