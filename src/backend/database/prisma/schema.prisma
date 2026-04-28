@@ -55,6 +55,9 @@ model User {
   predictions       Prediction[]        @relation("UserPredictions")
   reports           Report[]            @relation("UserReports")
   compatibilities   Compatibility[]     @relation("UserCompatibilities")
+  posts             Post[]              @relation("UserPosts")
+  comments          Comment[]           @relation("UserComments")
+  reactions         Reaction[]          @relation("UserReactions")
   chatSessions      AiChatSession[]     @relation("UserChatSessions")
   astrologerProfile AstrologerProfile?  @relation("AstrologerProfileUser")
   onboardedAstrologers AstrologerProfile[] @relation("AstrologerOnboardedBy")
@@ -381,6 +384,62 @@ model Report {
 
   @@index([userId, createdAt])
   @@index([profileId, kind])
+}
+
+// =========================
+// COMMUNITY FEED
+// =========================
+
+enum PostVisibility {
+  PUBLIC
+  ANONYMOUS
+  PRIVATE
+}
+
+model Post {
+  id         String         @id @default(cuid())
+  userId     String
+  body       String         @db.Text
+  visibility PostVisibility @default(PUBLIC)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  deletedAt  DateTime?
+
+  user      User       @relation("UserPosts", fields: [userId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+  reactions Reaction[]
+
+  @@index([userId])
+  @@index([visibility, createdAt])
+  @@index([deletedAt])
+}
+
+model Comment {
+  id        String    @id @default(cuid())
+  postId    String
+  userId    String
+  body      String    @db.Text
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation("UserComments", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@index([userId])
+}
+
+model Reaction {
+  id     String @id @default(cuid())
+  postId String
+  userId String
+  type   String
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation("UserReactions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId, type])
+  @@index([postId])
 }
 
 // =========================

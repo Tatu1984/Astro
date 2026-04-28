@@ -22,10 +22,26 @@ export interface LlmGenerateResult {
   latencyMs: number;
 }
 
+export interface LlmStreamChunk {
+  text: string;
+}
+
+/** Yielded once at the end of a stream so the caller can write LlmCallLog with usage. */
+export interface LlmStreamFinal {
+  fullText: string;
+  provider: LlmProviderId;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsdMicro: number;
+  latencyMs: number;
+}
+
 export interface LlmProvider {
   id: LlmProviderId;
   isAvailable(): boolean;
   generate(input: LlmGenerateInput): Promise<LlmGenerateResult>;
+  generateStream?(input: LlmGenerateInput): AsyncGenerator<LlmStreamChunk, LlmStreamFinal, void>;
 }
 
 export class LlmError extends Error {

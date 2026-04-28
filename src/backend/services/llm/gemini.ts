@@ -1,6 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
 
-import type { LlmGenerateInput, LlmGenerateResult, LlmProvider } from "./types";
+import type {
+  LlmGenerateInput,
+  LlmGenerateResult,
+  LlmProvider,
+  LlmStreamChunk,
+  LlmStreamFinal,
+} from "./types";
 import { LlmError } from "./types";
 
 // gemini-2.5-flash is the recommended fast tier on the free tier today
@@ -80,6 +86,66 @@ export class GeminiProvider implements LlmProvider {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new LlmError("gemini", 502, `gemini call failed: ${msg}`);
+    }
+  }
+
+  async *generateStream(input: LlmGenerateInput): AsyncGenerator<LlmStreamChunk, LlmStreamFinal, void> {
+    const start = Date.now();
+    const ai = this.getClient();
+    const model = input.modelOverride ?? DEFAULT_MODEL;
+
+    try {
+      const stream = await ai.models.generateContentStream({
+        model,
+        contents: input.userPrompt,
+        config: {
+          systemInstruction: input.systemPrompt,
+          temperature: input.temperature ?? 0.7,
+          maxOutputTokens: input.maxOutputTokens ?? 2048,
+          ...(input.jsonOutput
+            ? {
+                responseMimeType: "application/json",
+                thinkingConfig: { thinkingBudget: 0 },
+              }
+            : {}),
+        },
+      });
+
+      let fullText = "";
+      let lastUsage: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        thoughtsTokenCount?: number;
+      } = {};
+
+      for await (const chunk of stream) {
+        const text = chunk.text ?? "";
+        if (text) {
+          fullText += text;
+          yield { text };
+        }
+        if (chunk.usageMetadata) lastUsage = chunk.usageMetadata;
+      }
+
+      const inputTokens = lastUsage.promptTokenCount ?? 0;
+      const outputTokens = (lastUsage.candidatesTokenCount ?? 0) + (lastUsage.thoughtsTokenCount ?? 0);
+      const cost = Math.round(
+        (inputTokens / 1_000_000) * PRICE_INPUT_USD_PER_M * 1_000_000 +
+          (outputTokens / 1_000_000) * PRICE_OUTPUT_USD_PER_M * 1_000_000,
+      );
+
+      return {
+        fullText,
+        provider: "gemini",
+        model,
+        inputTokens,
+        outputTokens,
+        costUsdMicro: cost,
+        latencyMs: Date.now() - start,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new LlmError("gemini", 502, `gemini stream failed: ${msg}`);
     }
   }
 }

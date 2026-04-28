@@ -2,7 +2,7 @@ import type { AiChatMessage, AiChatSession } from "@prisma/client";
 
 import { prisma } from "@/backend/database/client";
 import { resolveNatal } from "@/backend/services/chart.service";
-import { callLlm } from "@/backend/services/llm/router";
+import { callLlm, callLlmStream } from "@/backend/services/llm/router";
 
 export class ChatError extends Error {
   constructor(public status: number, message: string) {
@@ -63,7 +63,7 @@ export async function startSession(userId: string): Promise<AiChatSession> {
     data: {
       userId,
       profileId: profile.id,
-      title: null, // first message will set this
+      title: null,
     },
   });
 }
@@ -89,7 +89,14 @@ interface SendMessageResult {
   assistantMessage: AiChatMessage;
 }
 
-export async function sendMessage(args: SendMessageArgs): Promise<SendMessageResult> {
+interface PromptBundle {
+  systemPrompt: string;
+  userPrompt: string;
+  sessionTitle: string | null;
+  trimmedContent: string;
+}
+
+async function buildChatPrompt(args: SendMessageArgs): Promise<PromptBundle> {
   const trimmed = args.content.trim();
   if (!trimmed) throw new ChatError(400, "message cannot be empty");
   if (trimmed.length > MAX_USER_MESSAGE_CHARS) {
@@ -112,7 +119,6 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
 
   const profile = session.profile;
 
-  // Pull or compute the natal chart for ground-truth context.
   const { chart } = await resolveNatal({
     userId: args.userId,
     profileId: profile.id,
@@ -140,11 +146,9 @@ ${JSON.stringify(
   2,
 )}`;
 
-  // Build the prompt: chart context as the first user "turn", then the
-  // last MAX_HISTORY_TURNS messages, then the new user message.
   const recentTurns = session.messages.slice(-MAX_HISTORY_TURNS);
-  const conversationLines: string[] = [
-    `[chart context]`,
+  const userPrompt = [
+    "[chart context]",
     chartContext,
     "",
     "[conversation so far]",
@@ -152,41 +156,47 @@ ${JSON.stringify(
     "",
     `USER: ${trimmed}`,
     `ASTROLOGER:`,
-  ];
+  ].join("\n");
 
-  const llm = await callLlm({
-    route: "ai.chat",
-    userId: args.userId,
-    systemPrompt: SYSTEM_PROMPT,
-    userPrompt: conversationLines.join("\n"),
-    temperature: 0.6,
-    maxOutputTokens: 1024,
-  });
+  return { systemPrompt: SYSTEM_PROMPT, userPrompt, sessionTitle: session.title, trimmedContent: trimmed };
+}
 
-  // Persist both messages and bump the session timestamp.
-  const result = await prisma.$transaction(async (tx) => {
+interface PersistArgs {
+  userId: string;
+  sessionId: string;
+  userContent: string;
+  assistantContent: string;
+  llmProvider: string;
+  llmModel: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsdMicro: number;
+  setTitleIfMissing: boolean;
+}
+
+async function persistTurn(args: PersistArgs): Promise<SendMessageResult> {
+  return prisma.$transaction(async (tx) => {
     const userMessage = await tx.aiChatMessage.create({
       data: {
         sessionId: args.sessionId,
         role: "USER",
-        content: trimmed,
+        content: args.userContent,
       },
     });
     const assistantMessage = await tx.aiChatMessage.create({
       data: {
         sessionId: args.sessionId,
         role: "ASSISTANT",
-        content: llm.text,
-        llmProvider: llm.provider,
-        llmModel: llm.model,
-        inputTokens: llm.inputTokens,
-        outputTokens: llm.outputTokens,
-        costUsdMicro: llm.costUsdMicro,
+        content: args.assistantContent,
+        llmProvider: args.llmProvider,
+        llmModel: args.llmModel,
+        inputTokens: args.inputTokens,
+        outputTokens: args.outputTokens,
+        costUsdMicro: args.costUsdMicro,
       },
     });
-    // Set title from the first user message if not yet set.
-    if (!session.title) {
-      const fallbackTitle = trimmed.slice(0, 60) + (trimmed.length > 60 ? "…" : "");
+    if (args.setTitleIfMissing) {
+      const fallbackTitle = args.userContent.slice(0, 60) + (args.userContent.length > 60 ? "…" : "");
       await tx.aiChatSession.update({
         where: { id: args.sessionId },
         data: { title: fallbackTitle, updatedAt: new Date() },
@@ -199,6 +209,111 @@ ${JSON.stringify(
     }
     return { userMessage, assistantMessage };
   });
+}
 
-  return result;
+export async function sendMessage(args: SendMessageArgs): Promise<SendMessageResult> {
+  const built = await buildChatPrompt(args);
+  const llm = await callLlm({
+    route: "ai.chat",
+    userId: args.userId,
+    systemPrompt: built.systemPrompt,
+    userPrompt: built.userPrompt,
+    temperature: 0.6,
+    maxOutputTokens: 1024,
+  });
+
+  return persistTurn({
+    userId: args.userId,
+    sessionId: args.sessionId,
+    userContent: built.trimmedContent,
+    assistantContent: llm.text,
+    llmProvider: llm.provider,
+    llmModel: llm.model,
+    inputTokens: llm.inputTokens,
+    outputTokens: llm.outputTokens,
+    costUsdMicro: llm.costUsdMicro,
+    setTitleIfMissing: built.sessionTitle === null,
+  });
+}
+
+export type ChatStreamEvent =
+  | { type: "chunk"; text: string }
+  | { type: "done"; userMessage: AiChatMessage; assistantMessage: AiChatMessage }
+  | { type: "error"; error: string };
+
+/**
+ * Streaming variant of sendMessage. Yields chunk events as the assistant
+ * writes, then a final "done" event with both persisted message rows.
+ */
+export async function* sendMessageStream(args: SendMessageArgs): AsyncGenerator<ChatStreamEvent, void, void> {
+  let built: PromptBundle;
+  try {
+    built = await buildChatPrompt(args);
+  } catch (err) {
+    yield { type: "error", error: err instanceof Error ? err.message : String(err) };
+    return;
+  }
+
+  let fullAssistant = "";
+  let lastFinal: {
+    provider: string;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    costUsdMicro: number;
+  } | null = null;
+
+  try {
+    const stream = callLlmStream({
+      route: "ai.chat.stream",
+      userId: args.userId,
+      systemPrompt: built.systemPrompt,
+      userPrompt: built.userPrompt,
+      temperature: 0.6,
+      maxOutputTokens: 1024,
+    });
+
+    while (true) {
+      const next = await stream.next();
+      if (next.done) {
+        lastFinal = {
+          provider: next.value.provider,
+          model: next.value.model,
+          inputTokens: next.value.inputTokens,
+          outputTokens: next.value.outputTokens,
+          costUsdMicro: next.value.costUsdMicro,
+        };
+        break;
+      }
+      fullAssistant += next.value.text;
+      yield { type: "chunk", text: next.value.text };
+    }
+  } catch (err) {
+    yield { type: "error", error: err instanceof Error ? err.message : String(err) };
+    return;
+  }
+
+  if (!lastFinal) {
+    yield { type: "error", error: "stream ended without final usage" };
+    return;
+  }
+
+  const persisted = await persistTurn({
+    userId: args.userId,
+    sessionId: args.sessionId,
+    userContent: built.trimmedContent,
+    assistantContent: fullAssistant,
+    llmProvider: lastFinal.provider,
+    llmModel: lastFinal.model,
+    inputTokens: lastFinal.inputTokens,
+    outputTokens: lastFinal.outputTokens,
+    costUsdMicro: lastFinal.costUsdMicro,
+    setTitleIfMissing: built.sessionTitle === null,
+  });
+
+  yield {
+    type: "done",
+    userMessage: persisted.userMessage,
+    assistantMessage: persisted.assistantMessage,
+  };
 }

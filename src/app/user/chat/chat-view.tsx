@@ -92,50 +92,104 @@ export function ChatView({ initialSessions, initialActive }: Props) {
     setError(null);
     setSending(true);
 
-    // Optimistic user message
-    const tempId = `temp-${Date.now()}`;
+    // Optimistic user message + empty placeholder for the streamed reply.
+    const userTempId = `temp-user-${Date.now()}`;
+    const assistantTempId = `temp-asst-${Date.now()}`;
     setActive({
       ...active,
       messages: [
         ...active.messages,
-        { id: tempId, role: "USER", content: text, createdAt: new Date().toISOString() },
+        { id: userTempId, role: "USER", content: text, createdAt: new Date().toISOString() },
+        { id: assistantTempId, role: "ASSISTANT", content: "", createdAt: new Date().toISOString() },
       ],
     });
     setInput("");
 
-    const res = await fetch(`/api/chat/sessions/${active.id}/messages`, {
+    const res = await fetch(`/api/chat/sessions/${active.id}/messages/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: text }),
     });
-    setSending(false);
 
-    if (!res.ok) {
+    if (!res.ok || !res.body) {
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
       setError(body?.error ?? `failed (${res.status})`);
-      // remove the optimistic user message
-      setActive((a) => (a ? { ...a, messages: a.messages.filter((m) => m.id !== tempId) } : a));
+      setActive((a) =>
+        a
+          ? { ...a, messages: a.messages.filter((m) => m.id !== userTempId && m.id !== assistantTempId) }
+          : a,
+      );
+      setSending(false);
       return;
     }
 
-    const { userMessage, assistantMessage } = (await res.json()) as {
-      userMessage: ChatMessage;
-      assistantMessage: ChatMessage;
-    };
-    setActive((a) =>
-      a
-        ? {
-            ...a,
-            messages: [
-              ...a.messages.filter((m) => m.id !== tempId),
-              userMessage,
-              assistantMessage,
-            ],
+    // Read SSE: blocks separated by \n\n; each block has a "data: <json>" line.
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let idx: number;
+        while ((idx = buffer.indexOf("\n\n")) >= 0) {
+          const block = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+
+          const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
+          if (!dataLine) continue;
+          type StreamEvent =
+            | { type: "chunk"; text: string }
+            | { type: "done"; userMessage: ChatMessage; assistantMessage: ChatMessage }
+            | { type: "error"; error: string };
+          let event: StreamEvent;
+          try {
+            event = JSON.parse(dataLine.slice(6)) as StreamEvent;
+          } catch {
+            continue;
           }
-        : a,
-    );
-    // Refresh the sidebar via a router refresh so sessions reorder.
-    router.refresh();
+
+          if (event.type === "chunk") {
+            setActive((a) =>
+              a
+                ? {
+                    ...a,
+                    messages: a.messages.map((m) =>
+                      m.id === assistantTempId ? { ...m, content: m.content + event.text } : m,
+                    ),
+                  }
+                : a,
+            );
+          } else if (event.type === "error") {
+            setError(event.error);
+            setActive((a) =>
+              a
+                ? { ...a, messages: a.messages.filter((m) => m.id !== userTempId && m.id !== assistantTempId) }
+                : a,
+            );
+          } else if (event.type === "done") {
+            setActive((a) =>
+              a
+                ? {
+                    ...a,
+                    messages: [
+                      ...a.messages.filter((m) => m.id !== userTempId && m.id !== assistantTempId),
+                      event.userMessage,
+                      event.assistantMessage,
+                    ],
+                  }
+                : a,
+            );
+          }
+        }
+      }
+    } finally {
+      setSending(false);
+      router.refresh();
+    }
   }
 
   return (
