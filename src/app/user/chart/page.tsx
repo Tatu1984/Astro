@@ -241,6 +241,8 @@ function fmtPeriod(p: { start: string; end: string }): string {
 function VedicPanel({ vedic }: { vedic: VedicResponse }) {
   const m = vedic.dasha.mahadasha;
   const a = vedic.dasha.antardasha;
+  const ym = vedic.yogini_dasha?.mahadasha;
+  const ya = vedic.yogini_dasha?.antardasha;
   return (
     <Card className="!p-5">
       <div className="flex items-start justify-between mb-3 gap-3">
@@ -253,7 +255,7 @@ function VedicPanel({ vedic }: { vedic: VedicResponse }) {
           </h3>
           <p className="text-xs text-white/55 mt-1">
             Lagna: <strong className="text-white">{vedic.ascendant_sign}</strong>{" "}
-            {(vedic.sidereal_ascendant % 30).toFixed(2)}° · D9 sign per planet listed below.
+            {(vedic.sidereal_ascendant % 30).toFixed(2)}° · divisional signs per planet listed below.
           </p>
         </div>
         <span
@@ -268,61 +270,116 @@ function VedicPanel({ vedic }: { vedic: VedicResponse }) {
         </span>
       </div>
 
-      {/* Dasha block */}
+      {/* Dasha blocks side-by-side: Vimshottari + Yogini */}
       <div className="grid sm:grid-cols-2 gap-3 mb-4">
-        <div className="rounded-md bg-white/5 border border-white/10 px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wider text-white/45">Mahadasha</p>
-          <p className="text-base font-semibold text-white mt-0.5">{m.lord}</p>
-          <p className="text-[10px] text-white/45 mt-0.5">{fmtPeriod(m)}</p>
-        </div>
-        <div className="rounded-md bg-white/5 border border-white/10 px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wider text-white/45">Current antardasha</p>
-          <p className="text-base font-semibold text-white mt-0.5">
-            {a.lord} <span className="text-white/45 text-sm">in {m.lord}</span>
-          </p>
-          <p className="text-[10px] text-white/45 mt-0.5">{fmtPeriod(a)}</p>
-        </div>
+        <DashaBlock
+          title="Vimshottari mahadasha"
+          subtitle="120-year cycle"
+          maha={m}
+          antar={a}
+          upcoming={vedic.dasha.upcoming_mahadashas}
+        />
+        {ym && ya ? (
+          <DashaBlock
+            title="Yogini mahadasha"
+            subtitle="36-year cycle"
+            maha={ym}
+            antar={ya}
+            upcoming={vedic.yogini_dasha.upcoming_mahadashas}
+          />
+        ) : null}
       </div>
-
-      {/* Upcoming mahadashas */}
-      {vedic.dasha.upcoming_mahadashas.length ? (
-        <div className="mb-4">
-          <p className="text-[10px] uppercase tracking-wider text-white/45 mb-1.5">Next mahadashas</p>
-          <ul className="flex flex-wrap gap-2 text-xs">
-            {vedic.dasha.upcoming_mahadashas.map((u, i) => (
-              <li
-                key={i}
-                className="rounded-md border border-[var(--color-border)] bg-white/5 px-2 py-1 text-white/75"
-              >
-                <span className="text-white">{u.lord}</span>{" "}
-                <span className="text-white/45">· starts {fmtDate(u.start)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
 
       {/* Planet table — sidereal */}
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-white/45 mb-1.5">Planets · sidereal · with nakshatra and D9 sign</p>
-        <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
+        <p className="text-[10px] uppercase tracking-wider text-white/45 mb-1.5">Planets · sidereal · nakshatras and divisional signs</p>
+        <ul className="space-y-1.5 text-xs">
           {vedic.planets.map((p) => (
             <li
               key={p.name}
               className="rounded-md border border-[var(--color-border)] bg-white/5 px-3 py-2"
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-white">{p.name}</span>
-                <span className="text-white/55">{p.sidereal_sign}</span>
+              <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 items-baseline">
+                <div>
+                  <span className="font-medium text-white">{p.name}</span>{" "}
+                  <span className="text-white/55">in {p.sidereal_sign}</span>
+                  <span className="text-[10px] text-white/40 ml-2 uppercase tracking-wider">
+                    h{p.house ?? "—"} · {p.nakshatra} pada {p.pada}{p.retrograde ? " · R" : ""}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1 text-[10px] uppercase tracking-wider text-white/45 col-span-full">
+                  <DivCell label="D9" sign={p.navamsa_sign} />
+                  <DivCell label="D10" sign={p.dasamsa_sign} />
+                  <DivCell label="D12" sign={p.dvadasamsa_sign} />
+                  <DivCell label="D60" sign={p.shashtiamsa_sign} />
+                </div>
               </div>
-              <div className="text-[10px] text-white/45 mt-0.5 uppercase tracking-wider">
-                h{p.house ?? "—"} · {p.nakshatra} pada {p.pada}{p.retrograde ? " · R" : ""}
-              </div>
-              <div className="text-[10px] text-white/45 mt-0.5">D9: <span className="text-white/75">{p.navamsa_sign}</span></div>
             </li>
           ))}
         </ul>
+        <p className="text-[10px] text-white/35 mt-2">
+          D9 marriage · D10 career · D12 parents · D60 past karma
+        </p>
       </div>
     </Card>
+  );
+}
+
+function DashaBlock({
+  title,
+  subtitle,
+  maha,
+  antar,
+  upcoming,
+}: {
+  title: string;
+  subtitle: string;
+  maha: { lord: string; start: string; end: string };
+  antar: { lord: string; start: string; end: string };
+  upcoming: Array<{ lord: string; start: string; end: string }>;
+}) {
+  return (
+    <div className="rounded-md bg-white/5 border border-white/10 px-3 py-2.5 space-y-2">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-white/45">{title}</p>
+        <p className="text-[10px] text-white/35">{subtitle}</p>
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-white/35">Mahadasha</p>
+        <p className="text-sm font-semibold text-white">{maha.lord}</p>
+        <p className="text-[10px] text-white/40">{fmtPeriod(maha)}</p>
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-white/35">Antardasha</p>
+        <p className="text-sm text-white">
+          {antar.lord} <span className="text-white/45 text-xs">in {maha.lord}</span>
+        </p>
+        <p className="text-[10px] text-white/40">{fmtPeriod(antar)}</p>
+      </div>
+      {upcoming.length ? (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-white/35">Next</p>
+          <ul className="flex flex-wrap gap-1 mt-0.5">
+            {upcoming.map((u, i) => (
+              <li
+                key={i}
+                className="rounded border border-[var(--color-border)] bg-white/5 px-1.5 py-0.5 text-[10px] text-white/70"
+              >
+                {u.lord} · {fmtDate(u.start)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DivCell({ label, sign }: { label: string; sign: string }) {
+  return (
+    <div className="rounded bg-black/20 px-2 py-1">
+      <span className="text-white/35">{label}</span>{" "}
+      <span className="text-white/80 normal-case">{sign}</span>
+    </div>
   );
 }

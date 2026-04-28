@@ -77,7 +77,10 @@ export interface VedicPlanetPosition {
   nakshatra_lord: string;
   speed_deg_per_day: number;
   retrograde: boolean;
-  navamsa_sign: string;
+  navamsa_sign: string;        // D9 — marriage / dharma
+  dasamsa_sign: string;        // D10 — career
+  dvadasamsa_sign: string;     // D12 — parents
+  shashtiamsa_sign: string;    // D60 — past karma
 }
 
 export interface DashaPeriod {
@@ -106,7 +109,8 @@ export interface VedicResponse {
   sidereal_ascendant: number;
   ascendant_sign: string;
   planets: VedicPlanetPosition[];
-  dasha: DashaInfo;
+  dasha: DashaInfo;            // Vimshottari (120 yr)
+  yogini_dasha: DashaInfo;     // Yogini (36 yr)
   is_manglik: boolean;
   manglik_reason: string;
 }
