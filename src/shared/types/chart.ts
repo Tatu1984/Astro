@@ -44,6 +44,16 @@ export interface TransitRequest {
   moment_utc: string; // ISO 8601
 }
 
+// Re-export type for autocomplete results — single shape across geocode util + UI.
+export interface GeocodeResult {
+  query: string;
+  displayName: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  countryCode?: string;
+}
+
 export interface TransitResponse {
   schema_version: string;
   computed_at: string;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/auth";
-import { GeocodeError, geocode } from "@/backend/utils/geocode.util";
+import { GeocodeError, geocode, searchPlaces } from "@/backend/utils/geocode.util";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -14,7 +14,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "query required" }, { status: 400 });
   }
 
+  // ?multi=1 returns up to 5 matches for autocomplete; default keeps the
+  // single-result legacy shape used elsewhere.
+  const multi = req.nextUrl.searchParams.get("multi") === "1";
+
   try {
+    if (multi) {
+      const results = await searchPlaces(q, 5);
+      return NextResponse.json({ results });
+    }
     const result = await geocode(q);
     return NextResponse.json(result);
   } catch (err) {

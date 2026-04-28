@@ -72,4 +72,47 @@ export async function geocode(query: string): Promise<GeocodeResult> {
   };
 }
 
+/**
+ * Autocomplete-friendly search — returns up to N matching places with
+ * lat/lng/timezone for each, so the UI can show a dropdown of options.
+ */
+export async function searchPlaces(query: string, limit = 5): Promise<GeocodeResult[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+
+  const url = new URL(NOMINATIM_BASE);
+  url.searchParams.set("q", trimmed);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("limit", String(Math.max(1, Math.min(10, limit))));
+  url.searchParams.set("addressdetails", "1");
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+    cache: "force-cache",
+  });
+  if (!res.ok) {
+    throw new GeocodeError(`nominatim ${res.status}: ${await res.text().catch(() => res.statusText)}`);
+  }
+
+  const rows = (await res.json()) as Array<{
+    lat: string;
+    lon: string;
+    display_name: string;
+    address?: { country_code?: string };
+  }>;
+
+  return rows.map((row) => {
+    const latitude = Number(row.lat);
+    const longitude = Number(row.lon);
+    return {
+      query: trimmed,
+      displayName: row.display_name,
+      latitude,
+      longitude,
+      timezone: tzLookup(latitude, longitude),
+      countryCode: row.address?.country_code?.toUpperCase(),
+    };
+  });
+}
+
 export { GeocodeError };
