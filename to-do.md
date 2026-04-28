@@ -160,11 +160,14 @@
 - [x] Synastry compatibility (TS-side aspect math) for ROMANTIC / FRIENDSHIP / BUSINESS / FAMILY
 - [x] Compatibility UI: list + generate form + detail with score, top aspects, narrative
 - [x] Community feed: `Post` / `Comment` / `Reaction` schema + APIs + UI (public + anonymous)
-- [x] `/transit` endpoint in Python compute + live "Now · transits" panel on `/user` (top aspects to natal, no LLM cost)
+- [x] `/transit` endpoint in Python compute + live "Now · transits" panel on `/user`
+- [x] `/user/calendar` real: predicted aspect peaks for next 60 days, grouped by month
+- [x] Retrograde windows panel: scans 3-day samples across -30 to +90 days
+- [x] Field-level encryption (AES-256-GCM) for KYC + bank fields with v1 format prefix and one-shot migration
 - [ ] Composite / Davison composite charts (Python compute extension)
-- [ ] Ashtakoot Milan + Manglik (needs Jyotisha / Vedic libs in Python compute)
-- [ ] Calendar (transit forecast over a date range — extend `/transit` to scan)
-- [ ] Muhurta finder + retrograde / eclipse alert generators
+- [ ] Ashtakoot Milan + Manglik (needs Jyotisha / Vedic libs)
+- [ ] Eclipse detection (date scan for Sun-Moon-Node alignment)
+- [ ] Muhurta finder (auspicious-timing search over a window)
 - [ ] BullMQ scheduled jobs (Upstash Redis)
 - [ ] FCM + APNs push pipeline + `DeviceToken` registration
 - [ ] Shareable card generator
