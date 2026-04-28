@@ -124,9 +124,20 @@ export async function resolveDailyHoroscope(args: ResolveDailyArgs): Promise<{
 
   let payload: DailyHoroscopePayload;
   try {
-    payload = JSON.parse(llm.text) as DailyHoroscopePayload;
+    // Strip markdown code fences defensively in case the model wraps JSON
+    // in ```json ... ``` blocks despite responseMimeType. Find first { and
+    // last } so any reasoning prefix/suffix is also tolerated.
+    const raw = llm.text.trim();
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    const json = start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
+    payload = JSON.parse(json) as DailyHoroscopePayload;
   } catch {
-    throw new LlmError("router", 502, "LLM returned non-JSON response");
+    throw new LlmError(
+      "router",
+      502,
+      `LLM returned non-JSON response (first 200 chars): ${llm.text.slice(0, 200)}`,
+    );
   }
 
   // Persist

@@ -3,16 +3,16 @@ import { GoogleGenAI } from "@google/genai";
 import type { LlmGenerateInput, LlmGenerateResult, LlmProvider } from "./types";
 import { LlmError } from "./types";
 
-// gemini-2.0-flash on Google's free tier — 1500 req/day, 1M tokens/min,
-// fastest of the family; perfect for daily-horoscope work. Long-form
-// reports later route through gemini-2.5-pro.
-const DEFAULT_MODEL = "gemini-2.0-flash";
+// gemini-2.5-flash is the recommended fast tier on the free tier today
+// (2.0-flash has been quietly capped on most new projects). Pricing on the
+// paid tier for 2.5-flash is similar.
+const DEFAULT_MODEL = "gemini-2.5-flash";
 
-// Public Gemini Flash pricing (USD per 1M tokens) — used when the user
-// is on a paid project. Free tier is, as the name suggests, free; the
-// numbers still help us track relative budget when we move past free.
-const PRICE_INPUT_USD_PER_M = 0.1;
-const PRICE_OUTPUT_USD_PER_M = 0.4;
+// Public Gemini 2.5 Flash pricing (USD per 1M tokens). Free tier is free;
+// keeping the numbers means our cost dashboard reflects the right budget
+// once a project is upgraded out of free tier.
+const PRICE_INPUT_USD_PER_M = 0.3;
+const PRICE_OUTPUT_USD_PER_M = 2.5;
 
 export class GeminiProvider implements LlmProvider {
   id = "gemini" as const;
@@ -41,7 +41,15 @@ export class GeminiProvider implements LlmProvider {
           systemInstruction: input.systemPrompt,
           temperature: input.temperature ?? 0.7,
           maxOutputTokens: input.maxOutputTokens ?? 2048,
-          ...(input.jsonOutput ? { responseMimeType: "application/json" } : {}),
+          // Disable extended reasoning for JSON routes — thinking tokens
+          // get billed and sometimes leak into the visible output even
+          // with responseMimeType set, which breaks JSON.parse.
+          ...(input.jsonOutput
+            ? {
+                responseMimeType: "application/json",
+                thinkingConfig: { thinkingBudget: 0 },
+              }
+            : {}),
         },
       });
 
