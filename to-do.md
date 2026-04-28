@@ -172,8 +172,9 @@
 - [x] **Ashtakoot Milan** in romantic compatibility — pure TS, all 8 kootas, score blended 60/40 with Western synastry
 - [x] Shareable daily card via `@vercel/og` PNG render
 - [x] Place autocomplete in birth-data form (Nominatim multi-result, debounced 350ms)
-- [ ] D10 (Dasamsa), D12, D60 divisional charts
-- [ ] Yogini / Ashtottari dasha (alternates to Vimshottari)
+- [x] **D10 / D12 / D60** divisional charts — surfaced per planet on `/user/chart`
+- [x] **Yogini Dasha** (36-year cycle) alongside Vimshottari (120-year cycle)
+- [ ] Ashtottari Dasha (108-year cycle) — third alternate
 - [ ] Muhurta finder (auspicious-timing search over a window)
 - [ ] BullMQ scheduled jobs (Upstash Redis)
 - [ ] FCM + APNs push pipeline + `DeviceToken` registration
