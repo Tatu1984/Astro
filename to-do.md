@@ -169,13 +169,15 @@
 - [x] Vedic panel on `/user/chart` with Lagna, manglik flag, mahadasha + antardasha + upcoming, planet+nakshatra+navamsa grid
 - [x] Eclipse detection (Sun-Moon syzygy near nodes); surfaced in calendar
 - [ ] Composite / Davison composite charts (Python compute extension)
-- [ ] Ashtakoot Milan in compatibility (now possible: have nakshatras + signs)
+- [x] **Ashtakoot Milan** in romantic compatibility — pure TS, all 8 kootas, score blended 60/40 with Western synastry
+- [x] Shareable daily card via `@vercel/og` PNG render
+- [x] Place autocomplete in birth-data form (Nominatim multi-result, debounced 350ms)
 - [ ] D10 (Dasamsa), D12, D60 divisional charts
 - [ ] Yogini / Ashtottari dasha (alternates to Vimshottari)
 - [ ] Muhurta finder (auspicious-timing search over a window)
 - [ ] BullMQ scheduled jobs (Upstash Redis)
 - [ ] FCM + APNs push pipeline + `DeviceToken` registration
-- [ ] Shareable card generator
+- [ ] Composite / Davison composite charts (Python compute extension)
 
 ---
 
