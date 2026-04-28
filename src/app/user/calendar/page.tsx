@@ -6,8 +6,10 @@ import { prisma } from "@/backend/database/client";
 import { resolveNatal } from "@/backend/services/chart.service";
 import {
   buildCalendar,
+  findEclipses,
   findRetrogradeWindows,
   TransitError,
+  type EclipseEvent,
   type RetrogradeWindow,
   type UpcomingAspect,
 } from "@/backend/services/transit.service";
@@ -81,6 +83,7 @@ export default async function CalendarPage() {
 
   let events: UpcomingAspect[] = [];
   let retrogrades: RetrogradeWindow[] = [];
+  let eclipses: EclipseEvent[] = [];
   let calendarError: string | null = null;
   try {
     const { chart } = await resolveNatal({
@@ -94,12 +97,14 @@ export default async function CalendarPage() {
         system: "BOTH",
       },
     });
-    const [cal, retroWindows] = await Promise.all([
+    const [cal, retroWindows, eclipseEvents] = await Promise.all([
       buildCalendar({ natal: chart, daysAhead: 60 }),
       findRetrogradeWindows({ daysPast: 30, daysAhead: 90 }).catch(() => [] as RetrogradeWindow[]),
+      findEclipses({ daysPast: 14, daysAhead: 120 }).catch(() => [] as EclipseEvent[]),
     ]);
     events = cal.events;
     retrogrades = retroWindows;
+    eclipses = eclipseEvents;
   } catch (err) {
     calendarError = err instanceof Error ? err.message : String(err);
     if (err instanceof TransitError) calendarError = err.message;
@@ -127,6 +132,37 @@ export default async function CalendarPage() {
         {events.length === 0 && !calendarError ? (
           <Card className="!p-8 text-center">
             <p className="text-sm text-white/55">No notable transit aspects coming exact in the next 60 days.</p>
+          </Card>
+        ) : null}
+
+        {eclipses.length ? (
+          <Card accent="gold" className="!p-5">
+            <h2 className="text-xs uppercase tracking-wider text-[var(--color-brand-gold)] mb-3">Eclipses · next 4 months</h2>
+            <ul className="space-y-2 text-sm">
+              {eclipses.map((e, i) => (
+                <li
+                  key={`${e.kind}-${i}`}
+                  className="flex flex-wrap items-center gap-3 rounded-md bg-white/5 border border-white/10 px-3 py-2"
+                >
+                  <span className="font-medium text-white capitalize">{e.kind} eclipse</span>
+                  <span className="text-white/60 text-xs">{fmtDate(e.date)}</span>
+                  <span className="text-[10px] text-white/45 uppercase tracking-wider">
+                    Sun {e.sunSign} · Moon {e.moonSign} · {e.nodalDistance.toFixed(1)}° from node
+                  </span>
+                  <span
+                    className={
+                      e.status === "active"
+                        ? "ml-auto rounded-full border border-[var(--color-brand-gold)]/40 bg-[var(--color-brand-gold)]/15 text-[var(--color-brand-gold)] px-2 py-0.5 text-[10px] uppercase tracking-wider"
+                        : e.status === "upcoming"
+                        ? "ml-auto rounded-full border border-[var(--color-brand-aqua)]/40 bg-[var(--color-brand-aqua)]/10 text-[var(--color-brand-aqua)] px-2 py-0.5 text-[10px] uppercase tracking-wider"
+                        : "ml-auto rounded-full border border-white/10 text-white/40 px-2 py-0.5 text-[10px] uppercase tracking-wider"
+                    }
+                  >
+                    {e.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </Card>
         ) : null}
 

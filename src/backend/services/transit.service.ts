@@ -322,3 +322,99 @@ function classifyWindow(start: number, end: number, now: number): RetrogradeWind
   if (now > end) return "ended";
   return "active";
 }
+
+export type EclipseKind = "solar" | "lunar";
+
+export interface EclipseEvent {
+  kind: EclipseKind;
+  date: string; // ISO — date of the new/full moon
+  moonSign: string;
+  sunSign: string;
+  nodalDistance: number; // Moon's distance from nearest Node, in degrees
+  status: "active" | "upcoming" | "ended";
+}
+
+const NODE_ECLIPSE_LIMIT_DEG = 12; // tighter limit for clear-cut eclipses
+
+/**
+ * Scan daily samples for Sun-Moon syzygies (new/full moons). Flag those
+ * within ~12° of the lunar nodes as eclipses.
+ *
+ * Resolution: 1-day. Eclipse dates land on the right day; not exact to
+ * the minute. Free-tier-friendly: ~90 calls in parallel for a 90-day
+ * window, ~3-5s warm.
+ */
+export async function findEclipses(args: {
+  daysPast?: number;
+  daysAhead?: number;
+}): Promise<EclipseEvent[]> {
+  const daysAhead = args.daysAhead ?? 90;
+  const daysPast = args.daysPast ?? 14;
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const samples: number[] = [];
+  for (let d = -daysPast; d <= daysAhead; d++) samples.push(now + d * dayMs);
+
+  const responses = await Promise.all(
+    samples.map((t) => computeTransit({ moment_utc: new Date(t).toISOString() })),
+  );
+
+  const series = responses.map((r) => {
+    const sun = r.planets.find((p) => p.name === "Sun");
+    const moon = r.planets.find((p) => p.name === "Moon");
+    const node = r.planets.find((p) => p.name === "MeanNode");
+    return {
+      moment: r.moment_utc,
+      sunLong: sun?.longitude_deg ?? 0,
+      moonLong: moon?.longitude_deg ?? 0,
+      nodeLong: node?.longitude_deg ?? 0,
+      moonSign: moon?.sign ?? "?",
+      sunSign: sun?.sign ?? "?",
+    };
+  });
+
+  function angleDelta(a: number, b: number): number {
+    const d = Math.abs(((a - b) % 360) + 360) % 360;
+    return d > 180 ? 360 - d : d;
+  }
+
+  const events: EclipseEvent[] = [];
+  for (let i = 1; i < series.length; i++) {
+    const prev = series[i - 1];
+    const curr = series[i];
+
+    // Sun-Moon angular separation, signed in [-180, 180]
+    const sepPrev = ((prev.moonLong - prev.sunLong + 540) % 360) - 180;
+    const sepCurr = ((curr.moonLong - curr.sunLong + 540) % 360) - 180;
+
+    // Crossing 0 (new moon) or ±180 (full moon)?
+    const crossedNewMoon = Math.sign(sepPrev) !== Math.sign(sepCurr) && Math.abs(sepPrev) < 30 && Math.abs(sepCurr) < 30;
+    const crossedFullMoon =
+      Math.abs(sepPrev) > 150 && Math.abs(sepCurr) > 150 && Math.sign(sepPrev) !== Math.sign(sepCurr);
+
+    if (!crossedNewMoon && !crossedFullMoon) continue;
+
+    // Pick whichever sample has the smaller |sep| (or |sep|−180) — that's
+    // closer to exact syzygy. Use that sample's date.
+    const targetIsFull = crossedFullMoon;
+    const distToTarget = (s: number) => (targetIsFull ? Math.abs(180 - Math.abs(s)) : Math.abs(s));
+    const closer = distToTarget(sepCurr) < distToTarget(sepPrev) ? curr : prev;
+
+    const moonNodeDist = Math.min(
+      angleDelta(closer.moonLong, closer.nodeLong),
+      angleDelta(closer.moonLong, (closer.nodeLong + 180) % 360),
+    );
+    if (moonNodeDist > NODE_ECLIPSE_LIMIT_DEG) continue;
+
+    events.push({
+      kind: targetIsFull ? "lunar" : "solar",
+      date: closer.moment,
+      moonSign: closer.moonSign,
+      sunSign: closer.sunSign,
+      nodalDistance: Number(moonNodeDist.toFixed(2)),
+      status: classifyWindow(Date.parse(closer.moment), Date.parse(closer.moment) + dayMs, now),
+    });
+  }
+
+  return events;
+}

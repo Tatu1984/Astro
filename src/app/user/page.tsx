@@ -170,7 +170,9 @@ export default async function UserToday({
                 <Button variant="gold">
                   Read full reading <ArrowRight className="h-4 w-4" />
                 </Button>
-                <Button variant="outline">Share card</Button>
+                <a href={`/api/share/daily?profileId=${profile?.id ?? ""}`} target="_blank" rel="noreferrer">
+                  <Button variant="outline">Share card</Button>
+                </a>
                 {horoscopeProvider ? (
                   <span className="inline-flex items-center gap-1.5 text-[10px] text-white/40 uppercase tracking-wider">
                     <Sparkles className="h-3 w-3" />
