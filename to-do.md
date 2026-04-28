@@ -141,13 +141,14 @@
 - [x] `llm.router.ts` with Gemini provider (gemini-2.5-flash default, gemini-2.5-pro for reports). Pluggable for Groq/Anthropic/OpenAI when keys land
 - [x] Prompt builder consumes chart JSON; chart JSON treated as ground truth in every prompt
 - [x] Daily / weekly / monthly / yearly horoscope routes — `/api/horoscopes/[kind]` with periodStart-keyed cache
-- [x] AI Chat with Chart: sessions, messages, ground-truth chart context (no streaming yet — Phase 2.5)
+- [x] AI Chat with Chart: sessions, messages, ground-truth chart context, streaming responses via SSE
 - [x] Long-form reports (Career / Love / Health / Education / Spiritual / Natal-full) → markdown rendered with Tailwind typography
 - [x] `LlmCallLog` writes on every LLM call (success + error)
 - [x] Admin LLM-cost dashboard reads real data — KPIs, by-provider, by-route, recent errors
 - [ ] Glossary content seeded; `Embedding` table populated via job (RAG retrieval)
 - [ ] BullMQ precompute jobs (Upstash Redis) — pre-bake daily horoscopes overnight
-- [ ] Streaming responses for chat (sse / web stream)
+- [x] Streaming responses for chat (SSE)
+- [x] LLM router single-retry on 503/429/UNAVAILABLE/RESOURCE_EXHAUSTED
 - [ ] Puppeteer → PDF → R2 for reports (defer until R2 keys are needed)
 - [ ] Safety filters: medical/legal/financial disclaimer auto-injection on reports/chat (currently chat is told to recommend pro consult; reports are silent)
 
@@ -155,13 +156,14 @@
 
 ## Phase 3 — Compatibility, Calendar, Notifications
 
-- [ ] Synastry / Composite / Davison in Python compute
-- [ ] Ashtakoot Milan + Manglik
-- [ ] Compatibility UI in `/user`
-- [ ] Muhurta finder + retrograde / eclipse alert generators
-- [ ] BullMQ scheduled jobs
+- [x] Synastry compatibility (TS-side aspect math) for ROMANTIC / FRIENDSHIP / BUSINESS / FAMILY
+- [x] Compatibility UI: list + generate form + detail with score, top aspects, narrative
+- [x] Community feed: `Post` / `Comment` / `Reaction` schema + APIs + UI (public + anonymous)
+- [ ] Composite / Davison composite charts (Python compute extension)
+- [ ] Ashtakoot Milan + Manglik (needs Jyotisha / Vedic libs in Python compute)
+- [ ] Calendar / Muhurta finder + retrograde / eclipse alert generators (needs Python `/transit`)
+- [ ] BullMQ scheduled jobs (Upstash Redis)
 - [ ] FCM + APNs push pipeline + `DeviceToken` registration
-- [ ] Community feed (`Post`, `Comment`, `Reaction`)
 - [ ] Shareable card generator
 
 ---
