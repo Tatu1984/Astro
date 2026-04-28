@@ -168,17 +168,16 @@
 - [x] **Vedic compute upgrade**: Lahiri sidereal, nakshatras, Vimshottari dasha, D9 Navamsa, Manglik (no `jyotisha`/`kerykeion` dep — direct pyswisseph)
 - [x] Vedic panel on `/user/chart` with Lagna, manglik flag, mahadasha + antardasha + upcoming, planet+nakshatra+navamsa grid
 - [x] Eclipse detection (Sun-Moon syzygy near nodes); surfaced in calendar
-- [ ] Composite / Davison composite charts (Python compute extension)
+- [x] **Composite + Davison** relationship charts in romantic compatibility (TS midpoints + Davison via /natal at midpoint date+place)
 - [x] **Ashtakoot Milan** in romantic compatibility — pure TS, all 8 kootas, score blended 60/40 with Western synastry
 - [x] Shareable daily card via `@vercel/og` PNG render
 - [x] Place autocomplete in birth-data form (Nominatim multi-result, debounced 350ms)
 - [x] **D10 / D12 / D60** divisional charts — surfaced per planet on `/user/chart`
 - [x] **Yogini Dasha** (36-year cycle) alongside Vimshottari (120-year cycle)
-- [ ] Ashtottari Dasha (108-year cycle) — third alternate
-- [ ] Muhurta finder (auspicious-timing search over a window)
+- [x] **Muhurta finder** — top auspicious days per nakshatra + tithi + weekday on `/user/calendar`
+- [ ] Ashtottari Dasha (108-year cycle) — third alternate dasha system (BullMQ + push remain)
 - [ ] BullMQ scheduled jobs (Upstash Redis)
 - [ ] FCM + APNs push pipeline + `DeviceToken` registration
-- [ ] Composite / Davison composite charts (Python compute extension)
 
 ---
 
