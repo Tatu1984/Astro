@@ -102,7 +102,7 @@ export default async function UserToday() {
           <Aurora />
           <div className="relative z-10 grid lg:grid-cols-[280px_1fr_280px] gap-6 items-center p-7">
             <div className="grid place-items-center">
-              <ChartWheel size={240} />
+              <ChartWheel size={240} chart={chart} />
             </div>
             <div>
               <p className="text-xs uppercase tracking-widest text-white/40">Today · {new Date().toUTCString().slice(5, 11)}</p>

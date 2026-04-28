@@ -4,6 +4,8 @@ import { listUsers } from "@/backend/services/admin.service";
 import { AddAstrologerDialog } from "./add-astrologer-dialog";
 import { RoleControl } from "./role-control";
 
+export const dynamic = "force-dynamic";
+
 const ROLE_BADGE: Record<string, string> = {
   ADMIN: "bg-[var(--color-brand-violet)]/10 text-[var(--color-brand-violet)] border-[var(--color-brand-violet)]/30",
   ASTROLOGER: "bg-[var(--color-brand-gold)]/15 text-[#a17800] border-[var(--color-brand-gold)]/40",

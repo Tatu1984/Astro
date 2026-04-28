@@ -129,7 +129,7 @@ export default async function ChartWorkspace({
           {/* wheel + axes */}
           <div className="space-y-6">
             <Card accent="gold" className="grid place-items-center !py-10">
-              <ChartWheel size={420} />
+              <ChartWheel size={420} chart={chart} />
             </Card>
 
             {chart ? (

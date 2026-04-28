@@ -6,6 +6,9 @@ import { CardLight } from "@/frontend/components/ui/CardLight";
 
 import { StatusControl } from "./status-control";
 
+// Hits Prisma at request time; the proxy already gates access by role.
+export const dynamic = "force-dynamic";
+
 const STATUS_BADGE: Record<string, string> = {
   PENDING: "bg-[var(--color-brand-gold)]/15 text-[#a17800] border-[var(--color-brand-gold)]/40",
   ACTIVE: "bg-[var(--color-brand-aqua)]/15 text-[#0a8273] border-[var(--color-brand-aqua)]/40",
