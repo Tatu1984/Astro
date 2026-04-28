@@ -90,11 +90,12 @@
 - [x] FastAPI scaffold deployed on Render free tier (Python 3.12.5)
 - [x] `POST /natal` (Moshier ephemeris, no data files needed)
 - [x] `POST /transit` (planet positions at any moment)
+- [x] `POST /vedic` (Lahiri sidereal: nakshatras, Vimshottari dasha, D9 Navamsa, Manglik flag, whole-sign houses)
 - [x] `X-Compute-Secret` shared-secret auth
 - [x] Smoke tested end-to-end from Next.js
 - [ ] Switch to Swiss Ephemeris (FLG_SWIEPH) by bundling `.se1` data files in image
 - [ ] Add Chiron + asteroids (need `seas_18.se1`)
-- [ ] `/synastry`, `/dasha`, `/divisional` endpoints (Phase 2/3 — synastry done in TS)
+- [ ] `/synastry`, `/divisional` (D10/D60), `/composite` endpoints — synastry done in TS
 
 ### Chart pipeline (Next.js side)
 - [x] `chart.service.resolveNatal`: cache lookup → compute → upsert
@@ -164,9 +165,13 @@
 - [x] `/user/calendar` real: predicted aspect peaks for next 60 days, grouped by month
 - [x] Retrograde windows panel: scans 3-day samples across -30 to +90 days
 - [x] Field-level encryption (AES-256-GCM) for KYC + bank fields with v1 format prefix and one-shot migration
+- [x] **Vedic compute upgrade**: Lahiri sidereal, nakshatras, Vimshottari dasha, D9 Navamsa, Manglik (no `jyotisha`/`kerykeion` dep — direct pyswisseph)
+- [x] Vedic panel on `/user/chart` with Lagna, manglik flag, mahadasha + antardasha + upcoming, planet+nakshatra+navamsa grid
+- [x] Eclipse detection (Sun-Moon syzygy near nodes); surfaced in calendar
 - [ ] Composite / Davison composite charts (Python compute extension)
-- [ ] Ashtakoot Milan + Manglik (needs Jyotisha / Vedic libs)
-- [ ] Eclipse detection (date scan for Sun-Moon-Node alignment)
+- [ ] Ashtakoot Milan in compatibility (now possible: have nakshatras + signs)
+- [ ] D10 (Dasamsa), D12, D60 divisional charts
+- [ ] Yogini / Ashtottari dasha (alternates to Vimshottari)
 - [ ] Muhurta finder (auspicious-timing search over a window)
 - [ ] BullMQ scheduled jobs (Upstash Redis)
 - [ ] FCM + APNs push pipeline + `DeviceToken` registration
