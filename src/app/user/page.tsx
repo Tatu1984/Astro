@@ -10,6 +10,7 @@ import {
   type HoroscopePayload,
   type ResolveHoroscopeKind,
 } from "@/backend/services/horoscope.service";
+import { resolveNowTransits, type TransitAspect } from "@/backend/services/transit.service";
 import { ChartWheel } from "@/frontend/components/astro/ChartWheel";
 import { Aurora } from "@/frontend/components/effects/Aurora";
 import { CountUp } from "@/frontend/components/effects/CountUp";
@@ -75,6 +76,7 @@ export default async function UserToday({
   let horoscope: HoroscopePayload | null = null;
   let horoscopeError: string | null = null;
   let horoscopeProvider: string | null = null;
+  let transitAspects: TransitAspect[] = [];
 
   if (profile) {
     try {
@@ -105,6 +107,15 @@ export default async function UserToday({
         horoscopeProvider = `${result.prediction.llmProvider} · ${result.prediction.llmModel}${result.cached ? " · cached" : ""}`;
       } catch (err) {
         horoscopeError = err instanceof Error ? err.message : String(err);
+      }
+
+      // Live transit aspects to natal — pure ephemeris call, no LLM cost.
+      // Failures are silent; the panel just hides if Render is asleep.
+      try {
+        const t = await resolveNowTransits({ natal: chart, topN: 6 });
+        transitAspects = t.topAspects;
+      } catch {
+        transitAspects = [];
       }
     }
   }
@@ -181,6 +192,36 @@ export default async function UserToday({
             </div>
           </div>
         </div>
+
+        {/* Now: live transit aspects — instant, no LLM cost */}
+        {transitAspects.length ? (
+          <Card className="!p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="font-semibold text-[var(--color-brand-gold)] text-sm">Now · transits to your chart</h3>
+                <p className="text-[10px] text-white/40 mt-0.5 uppercase tracking-wider">
+                  Live ephemeris · no LLM call
+                </p>
+              </div>
+              <span className="text-[10px] text-white/40 uppercase tracking-wider">{new Date().toUTCString().slice(5, 22)}</span>
+            </div>
+            <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+              {transitAspects.map((a, i) => (
+                <li
+                  key={i}
+                  className="rounded-md border border-[var(--color-border)] bg-white/5 px-3 py-2"
+                >
+                  <div className="text-white">
+                    {a.transit} <span className="text-white/45">{a.aspect}</span> natal {a.natal}
+                  </div>
+                  <div className="text-[10px] text-white/45 uppercase tracking-wider">
+                    in {a.natalSign} · h{a.natalHouse ?? "—"} · orb {a.delta.toFixed(1)}°{a.applying ? " · applying" : ""}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ) : null}
 
         {/* tabs — each one fetches a different cached Prediction */}
         <div className="flex items-center gap-1 rounded-md bg-[var(--color-card)] border border-[var(--color-border)] p-1 w-fit">

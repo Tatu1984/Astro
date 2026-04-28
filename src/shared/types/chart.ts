@@ -39,3 +39,14 @@ export interface NatalResponse {
   ascendant_deg: number;
   midheaven_deg: number;
 }
+
+export interface TransitRequest {
+  moment_utc: string; // ISO 8601
+}
+
+export interface TransitResponse {
+  schema_version: string;
+  computed_at: string;
+  moment_utc: string;
+  planets: PlanetPosition[];
+}
