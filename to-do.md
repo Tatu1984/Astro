@@ -99,13 +99,14 @@
 - [x] `chart.service.resolveNatal`: cache lookup → compute → upsert
 - [x] `chart.repository`: idempotent upsert on `(userId, kind, system, houseSystem, inputHash)`
 - [x] `POST /api/charts/natal` (auth-gated, Zod-validated, profile-bound)
-- [x] `/user` landing renders real planets/signs/houses panel beside the existing decorative wheel
-- [ ] **Real ChartWheel geometry**: plot real planet longitudes on the SVG (currently the wheel is decorative; the data panel beside it shows the real numbers)
+- [x] `/user` landing renders real planets/signs/houses panel beside the wheel
+- [x] **Real ChartWheel geometry**: planet glyphs at real longitudes, house cusps, Asc/MC axes, house numbers, conjunction stacking, retrograde marker
+- [x] `/user/chart` full chart viewer with profile switcher, axes panel, all 12 cusps
 - [ ] North Indian SVG renderer
 - [ ] South Indian SVG renderer
-- [ ] Aspect grid component
+- [ ] Aspect grid component (math: pairwise angle deltas; major aspects within orbs)
 - [ ] House-systems toggle in UI (Placidus / Whole Sign / Koch / Equal / Vedic Equal)
-- [ ] Divisional charts D1–D60 (pick subset)
+- [ ] Divisional charts D1–D60 (needs Python compute support)
 
 ### Admin & RBAC (added scope, fits Phase 1)
 - [x] Seed: `admin@astro.local` has `role=ADMIN`; user1/user2 are USER
@@ -128,9 +129,10 @@
 ### Phase 1 done when
 - [x] User signs up, creates a Profile, sees their real chart on `/user`
 - [x] Admin onboards, approves, suspends astrologers via `/admin`
-- [ ] Astrologer signs in, lands on `/astrologer`, sees their KYC status + profile
+- [x] Astrologer signs in, lands on `/astrologer`, sees their KYC status + profile
+- [x] Real chart wheel plots actual planet longitudes
 - [x] Cache verified end-to-end (cached=true on second request)
-- [ ] PR opens green CI + green Vercel preview
+- [x] Vercel deploy live at `astro-wine-beta.vercel.app` (verified 2026-04-28)
 
 ---
 
