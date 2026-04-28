@@ -5,15 +5,15 @@ import { Plus, Sparkles } from "lucide-react";
 import { auth } from "@/auth";
 import { resolveNatal } from "@/backend/services/chart.service";
 import { listUserProfiles } from "@/backend/services/profile.service";
+import { resolveVedic } from "@/backend/services/vedic.service";
 import { ChartWheel } from "@/frontend/components/astro/ChartWheel";
 import { TopBar } from "@/frontend/components/portal/TopBar";
 import { Badge } from "@/frontend/components/ui/Badge";
 import { Button } from "@/frontend/components/ui/Button";
 import { Card } from "@/frontend/components/ui/Card";
+import type { VedicResponse } from "@/shared/types/chart";
 
 import { ProfileSwitcher } from "./profile-switcher";
-
-const DIVISIONAL_TABS = ["D1 Rasi", "D9 Navamsa", "D10", "D12", "D60", "Transits"];
 
 function fmtPlace(birthPlace: string) {
   // first segment usually most informative; full string can be long
@@ -58,19 +58,24 @@ export default async function ChartWorkspace({
 
   let chart: Awaited<ReturnType<typeof resolveNatal>>["chart"] | null = null;
   let chartError: string | null = null;
+  let vedic: VedicResponse | null = null;
   try {
-    const result = await resolveNatal({
-      userId: session.user.id,
-      profileId: active.id,
-      request: {
-        birth_datetime_utc: active.birthDate.toISOString(),
-        latitude: Number(active.latitude),
-        longitude: Number(active.longitude),
-        house_system: "PLACIDUS",
-        system: "BOTH",
-      },
-    });
-    chart = result.chart;
+    const [natal, vedicResult] = await Promise.all([
+      resolveNatal({
+        userId: session.user.id,
+        profileId: active.id,
+        request: {
+          birth_datetime_utc: active.birthDate.toISOString(),
+          latitude: Number(active.latitude),
+          longitude: Number(active.longitude),
+          house_system: "PLACIDUS",
+          system: "BOTH",
+        },
+      }),
+      resolveVedic({ userId: session.user.id, profileId: active.id }).catch(() => null),
+    ]);
+    chart = natal.chart;
+    vedic = vedicResult;
   } catch (err) {
     chartError = err instanceof Error ? err.message : String(err);
   }
@@ -106,24 +111,8 @@ export default async function ChartWorkspace({
           </div>
         ) : null}
 
-        {/* Divisional chart tabs — only D1 is wired now; others are placeholders */}
-        <div className="flex flex-wrap items-center gap-2">
-          {DIVISIONAL_TABS.map((t, i) => (
-            <button
-              key={t}
-              type="button"
-              disabled={i !== 0}
-              title={i === 0 ? undefined : "Available in Phase 2"}
-              className={
-                i === 0
-                  ? "px-3 py-1.5 text-xs font-semibold rounded-md bg-[var(--color-brand-violet)] text-white"
-                  : "px-3 py-1.5 text-xs rounded-md bg-[var(--color-card)] border border-[var(--color-border)] text-white/35 cursor-not-allowed"
-              }
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+        {/* Vedic panel — present only when sidereal compute succeeded */}
+        {vedic ? <VedicPanel vedic={vedic} /> : null}
 
         <div className="grid lg:grid-cols-[1fr_360px] gap-6">
           {/* wheel + axes */}
@@ -238,5 +227,102 @@ function EmptyAddButton() {
         <Plus className="h-4 w-4" /> Add profile
       </Button>
     </Link>
+  );
+}
+
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function fmtPeriod(p: { start: string; end: string }): string {
+  return `${fmtDate(p.start)} → ${fmtDate(p.end)}`;
+}
+
+function VedicPanel({ vedic }: { vedic: VedicResponse }) {
+  const m = vedic.dasha.mahadasha;
+  const a = vedic.dasha.antardasha;
+  return (
+    <Card className="!p-5">
+      <div className="flex items-start justify-between mb-3 gap-3">
+        <div>
+          <h3 className="font-semibold text-[var(--color-brand-gold)] text-sm">
+            Vedic · sidereal &nbsp;
+            <span className="text-[10px] text-white/40 uppercase tracking-wider">
+              {vedic.ayanamsha_name} · ayanamsha {vedic.ayanamsha_deg.toFixed(3)}°
+            </span>
+          </h3>
+          <p className="text-xs text-white/55 mt-1">
+            Lagna: <strong className="text-white">{vedic.ascendant_sign}</strong>{" "}
+            {(vedic.sidereal_ascendant % 30).toFixed(2)}° · D9 sign per planet listed below.
+          </p>
+        </div>
+        <span
+          className={
+            vedic.is_manglik
+              ? "rounded-md border border-[var(--color-brand-rose)]/40 bg-[var(--color-brand-rose)]/10 text-[var(--color-brand-rose)] px-2 py-0.5 text-[10px] uppercase tracking-wider"
+              : "rounded-md border border-[var(--color-brand-aqua)]/40 bg-[var(--color-brand-aqua)]/10 text-[var(--color-brand-aqua)] px-2 py-0.5 text-[10px] uppercase tracking-wider"
+          }
+          title={vedic.manglik_reason}
+        >
+          {vedic.is_manglik ? "Manglik" : "Non-manglik"}
+        </span>
+      </div>
+
+      {/* Dasha block */}
+      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+        <div className="rounded-md bg-white/5 border border-white/10 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wider text-white/45">Mahadasha</p>
+          <p className="text-base font-semibold text-white mt-0.5">{m.lord}</p>
+          <p className="text-[10px] text-white/45 mt-0.5">{fmtPeriod(m)}</p>
+        </div>
+        <div className="rounded-md bg-white/5 border border-white/10 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wider text-white/45">Current antardasha</p>
+          <p className="text-base font-semibold text-white mt-0.5">
+            {a.lord} <span className="text-white/45 text-sm">in {m.lord}</span>
+          </p>
+          <p className="text-[10px] text-white/45 mt-0.5">{fmtPeriod(a)}</p>
+        </div>
+      </div>
+
+      {/* Upcoming mahadashas */}
+      {vedic.dasha.upcoming_mahadashas.length ? (
+        <div className="mb-4">
+          <p className="text-[10px] uppercase tracking-wider text-white/45 mb-1.5">Next mahadashas</p>
+          <ul className="flex flex-wrap gap-2 text-xs">
+            {vedic.dasha.upcoming_mahadashas.map((u, i) => (
+              <li
+                key={i}
+                className="rounded-md border border-[var(--color-border)] bg-white/5 px-2 py-1 text-white/75"
+              >
+                <span className="text-white">{u.lord}</span>{" "}
+                <span className="text-white/45">· starts {fmtDate(u.start)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* Planet table — sidereal */}
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-white/45 mb-1.5">Planets · sidereal · with nakshatra and D9 sign</p>
+        <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
+          {vedic.planets.map((p) => (
+            <li
+              key={p.name}
+              className="rounded-md border border-[var(--color-border)] bg-white/5 px-3 py-2"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-white">{p.name}</span>
+                <span className="text-white/55">{p.sidereal_sign}</span>
+              </div>
+              <div className="text-[10px] text-white/45 mt-0.5 uppercase tracking-wider">
+                h{p.house ?? "—"} · {p.nakshatra} pada {p.pada}{p.retrograde ? " · R" : ""}
+              </div>
+              <div className="text-[10px] text-white/45 mt-0.5">D9: <span className="text-white/75">{p.navamsa_sign}</span></div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Card>
   );
 }

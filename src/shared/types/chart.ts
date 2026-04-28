@@ -60,3 +60,53 @@ export interface TransitResponse {
   moment_utc: string;
   planets: PlanetPosition[];
 }
+
+// =========================================================
+// Vedic (sidereal) — mirror of Python compute schemas
+// =========================================================
+
+export interface VedicPlanetPosition {
+  name: string;
+  sidereal_long: number;
+  sidereal_sign: string;
+  sign_idx: number;
+  house: number | null;
+  nakshatra: string;
+  nakshatra_idx: number;
+  pada: number;
+  nakshatra_lord: string;
+  speed_deg_per_day: number;
+  retrograde: boolean;
+  navamsa_sign: string;
+}
+
+export interface DashaPeriod {
+  lord: string;
+  start: string; // ISO
+  end: string;   // ISO
+}
+
+export interface DashaInfo {
+  mahadasha: DashaPeriod;
+  antardasha: DashaPeriod;
+  upcoming_mahadashas: DashaPeriod[];
+}
+
+export interface VedicRequest {
+  birth_datetime_utc: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface VedicResponse {
+  schema_version: string;
+  computed_at: string;
+  ayanamsha_deg: number;
+  ayanamsha_name: string;
+  sidereal_ascendant: number;
+  ascendant_sign: string;
+  planets: VedicPlanetPosition[];
+  dasha: DashaInfo;
+  is_manglik: boolean;
+  manglik_reason: string;
+}
