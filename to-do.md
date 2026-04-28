@@ -89,11 +89,12 @@
 ### Python compute microservice (Astro-Compute)
 - [x] FastAPI scaffold deployed on Render free tier (Python 3.12.5)
 - [x] `POST /natal` (Moshier ephemeris, no data files needed)
+- [x] `POST /transit` (planet positions at any moment)
 - [x] `X-Compute-Secret` shared-secret auth
 - [x] Smoke tested end-to-end from Next.js
 - [ ] Switch to Swiss Ephemeris (FLG_SWIEPH) by bundling `.se1` data files in image
 - [ ] Add Chiron + asteroids (need `seas_18.se1`)
-- [ ] `/transit`, `/synastry`, `/dasha`, `/divisional` endpoints (Phase 2/3)
+- [ ] `/synastry`, `/dasha`, `/divisional` endpoints (Phase 2/3 — synastry done in TS)
 
 ### Chart pipeline (Next.js side)
 - [x] `chart.service.resolveNatal`: cache lookup → compute → upsert
@@ -159,9 +160,11 @@
 - [x] Synastry compatibility (TS-side aspect math) for ROMANTIC / FRIENDSHIP / BUSINESS / FAMILY
 - [x] Compatibility UI: list + generate form + detail with score, top aspects, narrative
 - [x] Community feed: `Post` / `Comment` / `Reaction` schema + APIs + UI (public + anonymous)
+- [x] `/transit` endpoint in Python compute + live "Now · transits" panel on `/user` (top aspects to natal, no LLM cost)
 - [ ] Composite / Davison composite charts (Python compute extension)
 - [ ] Ashtakoot Milan + Manglik (needs Jyotisha / Vedic libs in Python compute)
-- [ ] Calendar / Muhurta finder + retrograde / eclipse alert generators (needs Python `/transit`)
+- [ ] Calendar (transit forecast over a date range — extend `/transit` to scan)
+- [ ] Muhurta finder + retrograde / eclipse alert generators
 - [ ] BullMQ scheduled jobs (Upstash Redis)
 - [ ] FCM + APNs push pipeline + `DeviceToken` registration
 - [ ] Shareable card generator
