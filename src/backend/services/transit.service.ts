@@ -323,6 +323,175 @@ function classifyWindow(start: number, end: number, now: number): RetrogradeWind
   return "active";
 }
 
+// ============================================================
+// Muhurta finder — auspicious days based on day-of-week + Moon
+// nakshatra + tithi. Pure ephemeris scan; no LLM cost.
+// ============================================================
+
+const NAKSHATRAS_27 = [
+  "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra",
+  "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni",
+  "Uttara Phalguni", "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha",
+  "Jyeshtha", "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana",
+  "Dhanishta", "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada",
+  "Revati",
+];
+
+// Each nakshatra's traditional muhurta-friendliness 0..4. Sources vary;
+// using BPHS-leaning consensus.
+const NAK_AUSPICE: Record<number, number> = {
+   0: 4, // Ashwini       — universally good
+   1: 1, // Bharani       — generally avoided
+   2: 1, // Krittika      — fierce
+   3: 4, // Rohini        — most auspicious
+   4: 3, // Mrigashira
+   5: 1, // Ardra         — sharp
+   6: 3, // Punarvasu
+   7: 4, // Pushya        — universally auspicious
+   8: 0, // Ashlesha      — sharp
+   9: 0, // Magha         — pitru
+  10: 1, // Purva Phalguni
+  11: 3, // Uttara Phalguni
+  12: 4, // Hasta
+  13: 4, // Chitra
+  14: 3, // Swati
+  15: 1, // Vishakha
+  16: 4, // Anuradha
+  17: 1, // Jyeshtha
+  18: 0, // Mula
+  19: 1, // Purva Ashadha
+  20: 4, // Uttara Ashadha
+  21: 4, // Shravana
+  22: 2, // Dhanishta
+  23: 1, // Shatabhisha
+  24: 1, // Purva Bhadrapada
+  25: 3, // Uttara Bhadrapada
+  26: 4, // Revati
+};
+
+// Days of the week 0=Sunday..6=Saturday with their lord and base score.
+const WEEKDAY_INFO: Array<{ name: string; lord: string; score: number }> = [
+  { name: "Sunday",    lord: "Sun",     score: 2 },
+  { name: "Monday",    lord: "Moon",    score: 4 },
+  { name: "Tuesday",   lord: "Mars",    score: 1 },
+  { name: "Wednesday", lord: "Mercury", score: 3 },
+  { name: "Thursday",  lord: "Jupiter", score: 4 },
+  { name: "Friday",    lord: "Venus",   score: 4 },
+  { name: "Saturday",  lord: "Saturn",  score: 1 },
+];
+
+// Tithi 1..30. 1-15 are Shukla Paksha (waxing); 16-30 are Krishna Paksha
+// (waning). Position-based scoring (Nanda/Bhadra/Jaya/Rikta/Purna).
+function tithiScore(tithi: number): { score: number; name: string } {
+  // Position in the half-cycle (1..15)
+  const pos = ((tithi - 1) % 15) + 1;
+  const map: Record<number, [number, string]> = {
+    1:  [3, "Pratipada / Nanda"],
+    2:  [3, "Dwitiya / Bhadra"],
+    3:  [4, "Tritiya / Jaya"],
+    4:  [0, "Chaturthi / Rikta"],
+    5:  [3, "Panchami / Purna"],
+    6:  [3, "Shashti / Nanda"],
+    7:  [3, "Saptami / Bhadra"],
+    8:  [4, "Ashtami / Jaya"],
+    9:  [0, "Navami / Rikta"],
+    10: [3, "Dashami / Purna"],
+    11: [3, "Ekadashi / Nanda"],
+    12: [3, "Dwadashi / Bhadra"],
+    13: [4, "Trayodashi / Jaya"],
+    14: [0, "Chaturdashi / Rikta"],
+    15: [tithi === 15 ? 4 : 0, tithi === 15 ? "Purnima" : "Amavasya"],
+  };
+  const [score, name] = map[pos] ?? [2, ""];
+  return { score, name: name + (tithi > 15 ? " (Krishna)" : tithi <= 15 && tithi !== 15 ? " (Shukla)" : "") };
+}
+
+// Lahiri ayanamsha is ~24.58° in 2026 era. For muhurta's day-level
+// resolution this constant is well within tolerance.
+const LAHIRI_AYANAMSHA_2026 = 24.58;
+
+export interface MuhurtaDay {
+  date: string;           // ISO local-day
+  weekday: string;
+  weekdayLord: string;
+  nakshatra: string;
+  nakshatraIdx: number;
+  tithi: number;          // 1..30
+  tithiName: string;
+  score: number;          // 0..100
+  rating: "auspicious" | "favourable" | "neutral" | "avoid" | "very-avoid";
+}
+
+function muhurtaRating(score: number): MuhurtaDay["rating"] {
+  if (score >= 80) return "auspicious";
+  if (score >= 65) return "favourable";
+  if (score >= 45) return "neutral";
+  if (score >= 25) return "avoid";
+  return "very-avoid";
+}
+
+export async function findMuhurta(args: {
+  daysAhead?: number;
+}): Promise<MuhurtaDay[]> {
+  const daysAhead = args.daysAhead ?? 30;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const samples: number[] = [];
+  // Sample around noon UTC to be near the middle of any given day.
+  for (let d = 0; d < daysAhead; d++) {
+    const base = new Date(now + d * dayMs);
+    base.setUTCHours(12, 0, 0, 0);
+    samples.push(base.getTime());
+  }
+
+  const responses = await Promise.all(
+    samples.map((t) => computeTransit({ moment_utc: new Date(t).toISOString() })),
+  );
+
+  const out: MuhurtaDay[] = [];
+  for (let i = 0; i < responses.length; i++) {
+    const r = responses[i];
+    const sun = r.planets.find((p) => p.name === "Sun");
+    const moon = r.planets.find((p) => p.name === "Moon");
+    if (!sun || !moon) continue;
+
+    const moonSidereal = ((moon.longitude_deg - LAHIRI_AYANAMSHA_2026) % 360 + 360) % 360;
+    const nakIdx = Math.floor(moonSidereal / (360 / 27));
+    const nakName = NAKSHATRAS_27[nakIdx];
+
+    // Tithi: angular distance Moon - Sun in the tropical zodiac (works
+    // identically in sidereal since both shift by the same ayanamsha).
+    const angularDelta = ((moon.longitude_deg - sun.longitude_deg + 360) % 360);
+    const tithi = Math.floor(angularDelta / 12) + 1; // 1..30
+    const { score: tScore, name: tithiName } = tithiScore(tithi);
+
+    const dt = new Date(samples[i]);
+    const weekday = dt.getUTCDay();
+    const wd = WEEKDAY_INFO[weekday];
+
+    // Composite score 0..100. Weights: nakshatra 50%, tithi 30%,
+    // weekday 20%.
+    const nakNorm = (NAK_AUSPICE[nakIdx] ?? 2) * 25; // 0..100
+    const tithiNorm = tScore * 25;                    // 0..100
+    const wdNorm = wd.score * 25;                     // 0..100
+    const score = Math.round(0.5 * nakNorm + 0.3 * tithiNorm + 0.2 * wdNorm);
+
+    out.push({
+      date: dt.toISOString(),
+      weekday: wd.name,
+      weekdayLord: wd.lord,
+      nakshatra: nakName,
+      nakshatraIdx: nakIdx,
+      tithi,
+      tithiName,
+      score,
+      rating: muhurtaRating(score),
+    });
+  }
+
+  return out;
+}
+
 export type EclipseKind = "solar" | "lunar";
 
 export interface EclipseEvent {

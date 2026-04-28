@@ -7,9 +7,11 @@ import { resolveNatal } from "@/backend/services/chart.service";
 import {
   buildCalendar,
   findEclipses,
+  findMuhurta,
   findRetrogradeWindows,
   TransitError,
   type EclipseEvent,
+  type MuhurtaDay,
   type RetrogradeWindow,
   type UpcomingAspect,
 } from "@/backend/services/transit.service";
@@ -84,6 +86,7 @@ export default async function CalendarPage() {
   let events: UpcomingAspect[] = [];
   let retrogrades: RetrogradeWindow[] = [];
   let eclipses: EclipseEvent[] = [];
+  let muhurtaDays: MuhurtaDay[] = [];
   let calendarError: string | null = null;
   try {
     const { chart } = await resolveNatal({
@@ -97,18 +100,31 @@ export default async function CalendarPage() {
         system: "BOTH",
       },
     });
-    const [cal, retroWindows, eclipseEvents] = await Promise.all([
+    const [cal, retroWindows, eclipseEvents, muhurta] = await Promise.all([
       buildCalendar({ natal: chart, daysAhead: 60 }),
       findRetrogradeWindows({ daysPast: 30, daysAhead: 90 }).catch(() => [] as RetrogradeWindow[]),
       findEclipses({ daysPast: 14, daysAhead: 120 }).catch(() => [] as EclipseEvent[]),
+      findMuhurta({ daysAhead: 30 }).catch(() => [] as MuhurtaDay[]),
     ]);
     events = cal.events;
     retrogrades = retroWindows;
     eclipses = eclipseEvents;
+    muhurtaDays = muhurta;
   } catch (err) {
     calendarError = err instanceof Error ? err.message : String(err);
     if (err instanceof TransitError) calendarError = err.message;
   }
+
+  // Top auspicious + warn-about-bad muhurta days
+  const topAuspicious = muhurtaDays
+    .slice()
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+  const worstAvoid = muhurtaDays
+    .filter((d) => d.rating === "avoid" || d.rating === "very-avoid")
+    .slice()
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 3);
 
   const grouped = groupByMonth(events);
 
@@ -132,6 +148,48 @@ export default async function CalendarPage() {
         {events.length === 0 && !calendarError ? (
           <Card className="!p-8 text-center">
             <p className="text-sm text-white/55">No notable transit aspects coming exact in the next 60 days.</p>
+          </Card>
+        ) : null}
+
+        {topAuspicious.length ? (
+          <Card className="!p-5">
+            <h2 className="text-xs uppercase tracking-wider text-[var(--color-brand-gold)] mb-3">Muhurta · auspicious days · next 30</h2>
+            <ul className="space-y-2 text-sm mb-3">
+              {topAuspicious.map((d, i) => (
+                <li
+                  key={i}
+                  className="flex flex-wrap items-center gap-3 rounded-md bg-[var(--color-brand-aqua)]/10 border border-[var(--color-brand-aqua)]/30 px-3 py-2"
+                >
+                  <span className="font-medium text-white">{fmtDate(d.date)}</span>
+                  <span className="text-[10px] text-white/45 uppercase tracking-wider">
+                    {d.weekday} · {d.nakshatra} · {d.tithiName}
+                  </span>
+                  <span className="ml-auto text-[var(--color-brand-aqua)] font-semibold tabular-nums">
+                    {d.score}/100
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {worstAvoid.length ? (
+              <>
+                <p className="text-[10px] uppercase tracking-wider text-white/40 mt-3 mb-1.5">Avoid for major undertakings</p>
+                <ul className="space-y-1 text-xs">
+                  {worstAvoid.map((d, i) => (
+                    <li
+                      key={i}
+                      className="flex flex-wrap items-center gap-2 rounded-md bg-[var(--color-brand-rose)]/10 border border-[var(--color-brand-rose)]/30 px-3 py-1.5"
+                    >
+                      <span className="text-white">{fmtDate(d.date)}</span>
+                      <span className="text-[10px] text-white/45">{d.nakshatra} · {d.tithiName}</span>
+                      <span className="ml-auto text-[var(--color-brand-rose)] tabular-nums">{d.score}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            <p className="text-[10px] text-white/35 mt-3">
+              Score weights: nakshatra 50% · tithi 30% · weekday 20%. Use as a quick filter; check a full muhurta calculator for major events.
+            </p>
           </Card>
         ) : null}
 

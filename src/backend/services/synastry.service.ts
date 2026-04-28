@@ -3,6 +3,11 @@ import type { Compatibility, CompatibilityKind, Prisma } from "@prisma/client";
 import { prisma } from "@/backend/database/client";
 import { computeAshtakoot, type AshtakootResult } from "@/backend/services/ashtakoot.service";
 import { resolveNatal } from "@/backend/services/chart.service";
+import {
+  computeComposite,
+  computeDavison,
+  type CompositeChart,
+} from "@/backend/services/composite.service";
 import { callLlm } from "@/backend/services/llm/router";
 import { resolveVedic } from "@/backend/services/vedic.service";
 import type { NatalResponse, PlanetPosition } from "@/shared/types/chart";
@@ -207,10 +212,44 @@ export async function resolveCompatibility(args: ResolveCompatArgs): Promise<{
     }
   }
 
+  // Composite (TS midpoint) + Davison (real /natal at midpoint date+place).
+  // Each can fail independently without breaking the main score.
+  let composite: CompositeChart | null = null;
+  let davison: NatalResponse | null = null;
+  if (args.kind === "ROMANTIC") {
+    try {
+      composite = computeComposite(resultA.chart, resultB.chart);
+    } catch {
+      composite = null;
+    }
+    try {
+      davison = await computeDavison({
+        userId: args.userId,
+        profileA: {
+          id: profileA.id,
+          birthDate: profileA.birthDate,
+          latitude: Number(profileA.latitude),
+          longitude: Number(profileA.longitude),
+        },
+        profileB: {
+          id: profileB.id,
+          birthDate: profileB.birthDate,
+          latitude: Number(profileB.latitude),
+          longitude: Number(profileB.longitude),
+        },
+      });
+    } catch {
+      davison = null;
+    }
+  }
+
   // LLM narrative
   const focus = KIND_FOCUS[args.kind];
   const ashtakootHint = ashtakoot
     ? `\n- Ashtakoot Milan total is ${ashtakoot.total}/36 — verdict: ${ashtakoot.verdict}. Reference one or two specific kootas only when relevant (e.g. "Nadi koota is matched/mismatched"). Don't list every koota.`
+    : "";
+  const compositeHint = composite || davison
+    ? `\n- A composite chart (midpoints between the two natal charts) and/or a Davison chart (a real natal computed for the midpoint date + place) are included. Mention one or two notable placements from the relationship-as-its-own-entity perspective when natural — e.g. "your composite Sun in Libra speaks to a partnership oriented around balance". Don't list every composite planet.`
     : "";
   const systemPrompt = `You are a thoughtful, modern astrologer interpreting a synastry between two natal charts. Rules:
 
@@ -220,7 +259,7 @@ export async function resolveCompatibility(args: ResolveCompatArgs): Promise<{
 - Tone: warm, modern English. Specific over generic. Avoid clichés.
 - Focus areas for a ${args.kind.toLowerCase()} compatibility: ${focus}.
 - Reference 2-3 specific aspects by name (e.g. "your Sun trine her Moon"). Don't list every aspect; use the strongest.
-- The score given is a soft summary. Don't over-index on it; the texture is what matters.${ashtakootHint}`;
+- The score given is a soft summary. Don't over-index on it; the texture is what matters.${ashtakootHint}${compositeHint}`;
 
   const synastryFacts = {
     kind: args.kind,
@@ -233,6 +272,12 @@ export async function resolveCompatibility(args: ResolveCompatArgs): Promise<{
     aspects: synastry.aspects,
     counts: synastry.counts,
     ashtakoot,
+    composite,
+    davison: davison ? {
+      ascendant_deg: davison.ascendant_deg,
+      midheaven_deg: davison.midheaven_deg,
+      planets: davison.planets,
+    } : null,
   };
 
   const userPrompt = `Subject: ${args.kind.toLowerCase()} compatibility between ${profileA.fullName} and ${profileB.fullName}.
@@ -257,6 +302,12 @@ Write the markdown narrative now.
     ...synastry,
     westernScore,
     ashtakoot,
+    composite,
+    davison: davison ? {
+      ascendant_deg: davison.ascendant_deg,
+      midheaven_deg: davison.midheaven_deg,
+      planets: davison.planets,
+    } : null,
   } as unknown as Prisma.InputJsonValue;
 
   const compatibility = await prisma.compatibility.create({

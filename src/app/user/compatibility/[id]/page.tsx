@@ -66,11 +66,25 @@ export default async function CompatibilityDetail({
       { score: number; max: number; a?: string; b?: string }
     >;
   };
+  type CompositeBlob = {
+    ascendant_sign: string;
+    ascendant_deg: number;
+    midheaven_sign: string;
+    midheaven_deg: number;
+    planets: Array<{ name: string; longitude_deg: number; sign: string }>;
+  };
+  type DavisonBlob = {
+    ascendant_deg: number;
+    midheaven_deg: number;
+    planets: Array<{ name: string; longitude_deg: number; sign: string; house: number | null }>;
+  };
   const details = compat.details as {
     aspects?: SynastryAspect[];
     counts?: Record<string, number>;
     westernScore?: number;
     ashtakoot?: AshtakootBlob | null;
+    composite?: CompositeBlob | null;
+    davison?: DavisonBlob | null;
   };
   const aspects: SynastryAspect[] = (details.aspects ?? [])
     .slice()
@@ -78,6 +92,15 @@ export default async function CompatibilityDetail({
     .slice(0, 12);
   const counts = details.counts ?? {};
   const ashta = details.ashtakoot ?? null;
+  const composite = details.composite ?? null;
+  const davison = details.davison ?? null;
+  const SIGN_FROM_LONG = (deg: number) => {
+    const norm = (((deg % 360) + 360) % 360);
+    return [
+      "Aries","Taurus","Gemini","Cancer","Leo","Virgo",
+      "Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces",
+    ][Math.floor(norm / 30)];
+  };
 
   return (
     <>
@@ -186,6 +209,37 @@ export default async function CompatibilityDetail({
           </Card>
         ) : null}
 
+        {composite || davison ? (
+          <Card className="!p-5">
+            <h3 className="text-xs uppercase tracking-wider text-[var(--color-brand-gold)] mb-3">
+              Relationship charts
+            </h3>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {composite ? (
+                <RelationshipChartCard
+                  title="Composite"
+                  subtitle="Midpoints of both charts"
+                  ascSign={composite.ascendant_sign}
+                  mcSign={composite.midheaven_sign}
+                  planets={composite.planets.map((p) => ({ name: p.name, sign: p.sign, deg: p.longitude_deg }))}
+                />
+              ) : null}
+              {davison ? (
+                <RelationshipChartCard
+                  title="Davison"
+                  subtitle="Real natal at midpoint date + place"
+                  ascSign={SIGN_FROM_LONG(davison.ascendant_deg)}
+                  mcSign={SIGN_FROM_LONG(davison.midheaven_deg)}
+                  planets={davison.planets.map((p) => ({ name: p.name, sign: p.sign, deg: p.longitude_deg }))}
+                />
+              ) : null}
+            </div>
+            <p className="text-[10px] text-white/40 mt-3">
+              Composite shows the partnership as midpoints of two charts. Davison shows the chart for the midpoint date + place — a real natal computed for the relationship&apos;s &ldquo;centre of gravity&rdquo;.
+            </p>
+          </Card>
+        ) : null}
+
         {compat.text ? (
           <Card className="!p-8">
             <article className="prose prose-invert max-w-none
@@ -201,5 +255,44 @@ export default async function CompatibilityDetail({
         ) : null}
       </div>
     </>
+  );
+}
+
+function RelationshipChartCard({
+  title,
+  subtitle,
+  ascSign,
+  mcSign,
+  planets,
+}: {
+  title: string;
+  subtitle: string;
+  ascSign: string;
+  mcSign: string;
+  planets: Array<{ name: string; sign: string; deg: number }>;
+}) {
+  const KEY = ["Sun", "Moon", "Mercury", "Venus", "Mars"];
+  const featured = planets.filter((p) => KEY.includes(p.name));
+  return (
+    <div className="rounded-md bg-white/5 border border-white/10 px-4 py-3">
+      <div className="flex items-baseline gap-2">
+        <h4 className="font-semibold text-white">{title}</h4>
+        <span className="text-[10px] text-white/40">{subtitle}</span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <span className="text-white/55">Asc</span>
+        <span className="text-white/85 text-right">{ascSign}</span>
+        <span className="text-white/55">MC</span>
+        <span className="text-white/85 text-right">{mcSign}</span>
+        {featured.map((p) => (
+          <span key={p.name} className="contents">
+            <span className="text-white/55">{p.name}</span>
+            <span className="text-white/85 text-right">
+              {p.sign} <span className="text-white/40">{(p.deg % 30).toFixed(1)}°</span>
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
