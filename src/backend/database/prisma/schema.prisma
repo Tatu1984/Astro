@@ -54,6 +54,7 @@ model User {
   charts            Chart[]
   predictions       Prediction[]        @relation("UserPredictions")
   reports           Report[]            @relation("UserReports")
+  compatibilities   Compatibility[]     @relation("UserCompatibilities")
   chatSessions      AiChatSession[]     @relation("UserChatSessions")
   astrologerProfile AstrologerProfile?  @relation("AstrologerProfileUser")
   onboardedAstrologers AstrologerProfile[] @relation("AstrologerOnboardedBy")
@@ -209,6 +210,8 @@ model Profile {
   predictions    Prediction[]
   reports        Report[]
   chatSessions   AiChatSession[]
+  compatibilityA Compatibility[]  @relation("CompatibilityA")
+  compatibilityB Compatibility[]  @relation("CompatibilityB")
 
   @@index([userId])
   @@index([kind])
@@ -305,6 +308,41 @@ model Prediction {
   @@index([userId, periodStart])
   @@index([profileId, kind])
   @@unique([userId, profileId, kind, periodStart])
+}
+
+// =========================
+// COMPATIBILITY (synastry between two profiles)
+// =========================
+
+enum CompatibilityKind {
+  ROMANTIC
+  FRIENDSHIP
+  BUSINESS
+  FAMILY
+}
+
+model Compatibility {
+  id           String            @id @default(cuid())
+  userId       String
+  kind         CompatibilityKind
+  profileAId   String
+  profileBId   String
+  score        Int
+  details      Json
+  text         String?           @db.Text
+  llmProvider  String?
+  llmModel     String?
+  inputTokens  Int               @default(0)
+  outputTokens Int               @default(0)
+  costUsdMicro Int               @default(0)
+  createdAt    DateTime          @default(now())
+
+  user     User    @relation("UserCompatibilities", fields: [userId], references: [id], onDelete: Cascade)
+  profileA Profile @relation("CompatibilityA", fields: [profileAId], references: [id], onDelete: Cascade)
+  profileB Profile @relation("CompatibilityB", fields: [profileBId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, profileAId, profileBId])
+  @@index([userId, createdAt])
 }
 
 // =========================
