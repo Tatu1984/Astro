@@ -1,8 +1,10 @@
 import type { Compatibility, CompatibilityKind, Prisma } from "@prisma/client";
 
 import { prisma } from "@/backend/database/client";
+import { computeAshtakoot, type AshtakootResult } from "@/backend/services/ashtakoot.service";
 import { resolveNatal } from "@/backend/services/chart.service";
 import { callLlm } from "@/backend/services/llm/router";
+import { resolveVedic } from "@/backend/services/vedic.service";
 import type { NatalResponse, PlanetPosition } from "@/shared/types/chart";
 
 export class CompatibilityError extends Error {
@@ -160,8 +162,10 @@ export async function resolveCompatibility(args: ResolveCompatArgs): Promise<{
   });
   if (existing) return { cached: true, compatibility: existing };
 
-  // Resolve both natal charts.
-  const [resultA, resultB] = await Promise.all([
+  // Resolve both natal charts. For ROMANTIC kind, also pull Vedic data
+  // for both profiles so we can compute Ashtakoot Milan.
+  const wantVedic = args.kind === "ROMANTIC";
+  const [resultA, resultB, vedicA, vedicB] = await Promise.all([
     resolveNatal({
       userId: args.userId, profileId: profileA.id,
       request: {
@@ -178,13 +182,36 @@ export async function resolveCompatibility(args: ResolveCompatArgs): Promise<{
         house_system: "PLACIDUS", system: "BOTH",
       },
     }),
+    wantVedic ? resolveVedic({ userId: args.userId, profileId: profileA.id }).catch(() => null) : Promise.resolve(null),
+    wantVedic ? resolveVedic({ userId: args.userId, profileId: profileB.id }).catch(() => null) : Promise.resolve(null),
   ]);
 
   const synastry = computeSynastry(resultA.chart, resultB.chart);
-  const score = scoreFromWeights(synastry.weightedScore);
+  const westernScore = scoreFromWeights(synastry.weightedScore);
+
+  // For romantic compatibility, blend Western synastry score with the
+  // Ashtakoot total (out of 36, normalised to 0-100). 60% Vedic, 40%
+  // Western — matches what most Indian-context users expect.
+  let ashtakoot: AshtakootResult | null = null;
+  let score = westernScore;
+  if (wantVedic && vedicA && vedicB) {
+    const moonA = vedicA.planets.find((p) => p.name === "Moon");
+    const moonB = vedicB.planets.find((p) => p.name === "Moon");
+    if (moonA && moonB) {
+      ashtakoot = computeAshtakoot(
+        { signIdx: moonA.sign_idx, nakshatraIdx: moonA.nakshatra_idx },
+        { signIdx: moonB.sign_idx, nakshatraIdx: moonB.nakshatra_idx },
+      );
+      const ashtaPct = (ashtakoot.total / 36) * 100;
+      score = Math.max(5, Math.min(95, Math.round(0.6 * ashtaPct + 0.4 * westernScore)));
+    }
+  }
 
   // LLM narrative
   const focus = KIND_FOCUS[args.kind];
+  const ashtakootHint = ashtakoot
+    ? `\n- Ashtakoot Milan total is ${ashtakoot.total}/36 — verdict: ${ashtakoot.verdict}. Reference one or two specific kootas only when relevant (e.g. "Nadi koota is matched/mismatched"). Don't list every koota.`
+    : "";
   const systemPrompt = `You are a thoughtful, modern astrologer interpreting a synastry between two natal charts. Rules:
 
 - The aspect data and chart facts in the prompt are ground truth. Do not invent additional aspects, planets, or signs.
@@ -193,17 +220,19 @@ export async function resolveCompatibility(args: ResolveCompatArgs): Promise<{
 - Tone: warm, modern English. Specific over generic. Avoid clichés.
 - Focus areas for a ${args.kind.toLowerCase()} compatibility: ${focus}.
 - Reference 2-3 specific aspects by name (e.g. "your Sun trine her Moon"). Don't list every aspect; use the strongest.
-- The score given is a soft summary. Don't over-index on it; the texture is what matters.`;
+- The score given is a soft summary. Don't over-index on it; the texture is what matters.${ashtakootHint}`;
 
   const synastryFacts = {
     kind: args.kind,
     score,
+    westernScore,
     profileA: { name: profileA.fullName, birthPlace: profileA.birthPlace, ascendant: synastry.ascA },
     profileB: { name: profileB.fullName, birthPlace: profileB.birthPlace, ascendant: synastry.ascB },
     plantsA: resultA.chart.planets,
     plantsB: resultB.chart.planets,
     aspects: synastry.aspects,
     counts: synastry.counts,
+    ashtakoot,
   };
 
   const userPrompt = `Subject: ${args.kind.toLowerCase()} compatibility between ${profileA.fullName} and ${profileB.fullName}.
@@ -224,6 +253,12 @@ Write the markdown narrative now.
     maxOutputTokens: 1800,
   });
 
+  const detailsBlob = {
+    ...synastry,
+    westernScore,
+    ashtakoot,
+  } as unknown as Prisma.InputJsonValue;
+
   const compatibility = await prisma.compatibility.create({
     data: {
       userId: args.userId,
@@ -231,7 +266,7 @@ Write the markdown narrative now.
       profileAId: profileA.id,
       profileBId: profileB.id,
       score,
-      details: synastry as unknown as Prisma.InputJsonValue,
+      details: detailsBlob,
       text: llm.text,
       llmProvider: llm.provider,
       llmModel: llm.model,
