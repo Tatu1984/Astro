@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
-import { ArrowRight, Calendar, Flame, TrendingUp } from "lucide-react";
+import { ArrowRight, Calendar, Flame, Sparkles, TrendingUp } from "lucide-react";
 
 import { auth } from "@/auth";
 import { prisma } from "@/backend/database/client";
 import { resolveNatal } from "@/backend/services/chart.service";
+import { resolveDailyHoroscope, type DailyHoroscopePayload } from "@/backend/services/horoscope.service";
 import { ChartWheel } from "@/frontend/components/astro/ChartWheel";
 import { Aurora } from "@/frontend/components/effects/Aurora";
 import { CountUp } from "@/frontend/components/effects/CountUp";
@@ -14,16 +15,16 @@ import { Card } from "@/frontend/components/ui/Card";
 import type { NatalResponse } from "@/shared/types/chart";
 
 const TILES = [
-  { icon: TrendingUp, title: "Vimshottari Dasha", body: "Saturn / Mercury — 4y left",       tone: "violet" as const },
-  { icon: Calendar,   title: "Next big transit",  body: "Jupiter conj Sun · 12 May",        tone: "gold"   as const },
-  { icon: Flame,      title: "Reading streak",    body: "23 days · keep going!",            tone: "rose"   as const },
+  { icon: TrendingUp, title: "Vimshottari Dasha", body: "Sample · live data in Phase 3", tone: "violet" as const },
+  { icon: Calendar,   title: "Next big transit",  body: "Live transit forecasts in Phase 3", tone: "gold"   as const },
+  { icon: Flame,      title: "Reading streak",    body: "Streak tracking with Phase 2.5",  tone: "rose"   as const },
 ];
 
-const HOROSCOPES = [
-  { title: "Career", body: "Mid-week brings clarity around a long-running negotiation. Speak first; the right words arrive when you start.", score: 78 },
-  { title: "Love",   body: "Venus aspects favour emotional honesty. A conversation you've been avoiding becomes lighter than expected.",     score: 82 },
-  { title: "Health", body: "Pace is your friend. Pushing today buys nothing; resting today buys the rest of the week.",                       score: 65 },
-];
+const FALLBACK_DOMAINS: DailyHoroscopePayload["domains"] = {
+  career: { score: 70, body: "Live AI horoscope appears here once GEMINI_API_KEY is set." },
+  love:   { score: 70, body: "Live AI horoscope appears here once GEMINI_API_KEY is set." },
+  health: { score: 70, body: "Live AI horoscope appears here once GEMINI_API_KEY is set." },
+};
 
 function initialsFor(input: string | null | undefined): string {
   if (!input) return "U";
@@ -51,6 +52,9 @@ export default async function UserToday() {
   const profile = user.profiles[0];
   let chart: NatalResponse | null = null;
   let chartError: string | null = null;
+  let horoscope: DailyHoroscopePayload | null = null;
+  let horoscopeError: string | null = null;
+  let horoscopeProvider: string | null = null;
 
   if (profile) {
     try {
@@ -69,18 +73,38 @@ export default async function UserToday() {
     } catch (err) {
       chartError = err instanceof Error ? err.message : String(err);
     }
+
+    if (chart) {
+      try {
+        const result = await resolveDailyHoroscope({
+          userId: user.id,
+          profileId: profile.id,
+        });
+        horoscope = result.payload;
+        horoscopeProvider = `${result.prediction.llmProvider} · ${result.prediction.llmModel}${result.cached ? " · cached" : ""}`;
+      } catch (err) {
+        horoscopeError = err instanceof Error ? err.message : String(err);
+      }
+    }
   }
 
   const sun = chart?.planets.find((p) => p.name === "Sun");
-  const moon = chart?.planets.find((p) => p.name === "Moon");
-  const heroLine = sun
+  const fallbackHero = sun
     ? `Sun in ${sun.sign} · ${sun.longitude_deg.toFixed(2)}°`
-    : "Connect a profile to compute your chart";
-  const heroBody = chart && moon
-    ? `Moon in ${moon.sign}, house ${moon.house ?? "—"}. A flowing day for ${
-        moon.sign === "Cancer" || moon.sign === "Pisces" ? "emotional reflection" : "decisive action"
-      } — let your strengths lead.`
-    : "Once your birth profile is set, this panel reflects today's transits over your real natal chart.";
+    : profile
+    ? "Computing your reading…"
+    : "Add a profile to compute your chart";
+
+  const heroHeadline = horoscope?.headline ?? fallbackHero;
+  const heroBody =
+    horoscope?.body ??
+    (horoscopeError
+      ? `Daily AI horoscope unavailable: ${horoscopeError}. Once GEMINI_API_KEY is set, this updates automatically.`
+      : profile
+      ? "Once your birth profile is set, this panel reflects today's reading from your real natal chart."
+      : "Add your birth profile to see today's personalised reading.");
+
+  const domains = horoscope?.domains ?? FALLBACK_DOMAINS;
 
   return (
     <>
@@ -105,12 +129,22 @@ export default async function UserToday() {
               <ChartWheel size={240} chart={chart} />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-widest text-white/40">Today · {new Date().toUTCString().slice(5, 11)}</p>
-              <h2 className="mt-1 text-3xl font-semibold text-white">{heroLine}</h2>
+              <p className="text-xs uppercase tracking-widest text-white/40">
+                Today · {new Date().toUTCString().slice(5, 11)}
+              </p>
+              <h2 className="mt-1 text-3xl font-semibold text-white">{heroHeadline}</h2>
               <p className="mt-3 text-white/70 leading-relaxed max-w-md">{heroBody}</p>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Button variant="gold">Read full reading <ArrowRight className="h-4 w-4" /></Button>
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <Button variant="gold">
+                  Read full reading <ArrowRight className="h-4 w-4" />
+                </Button>
                 <Button variant="outline">Share card</Button>
+                {horoscopeProvider ? (
+                  <span className="inline-flex items-center gap-1.5 text-[10px] text-white/40 uppercase tracking-wider">
+                    <Sparkles className="h-3 w-3" />
+                    {horoscopeProvider}
+                  </span>
+                ) : null}
               </div>
             </div>
             <div className="grid grid-cols-3 lg:grid-cols-1 gap-3">
@@ -127,78 +161,48 @@ export default async function UserToday() {
           </div>
         </div>
 
-        {/* Real chart data */}
-        {chart ? (
-          <Card className="!p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-semibold text-[var(--color-brand-gold)] text-base">Your natal chart</h3>
-                <p className="text-xs text-white/50 mt-0.5">
-                  {chart.house_system} · {chart.system} · cached by inputHash {chart.input_hash.slice(0, 10)}…
-                </p>
-              </div>
-              <div className="text-right text-xs text-white/50">
-                <div>Asc {chart.ascendant_deg.toFixed(2)}°</div>
-                <div>MC {chart.midheaven_deg.toFixed(2)}°</div>
-              </div>
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {chart.planets.map((p) => (
-                <div
-                  key={p.name}
-                  className="flex items-center justify-between rounded-md bg-white/5 border border-white/10 px-3 py-2"
-                >
-                  <div>
-                    <div className="text-sm font-medium text-white">{p.name}</div>
-                    <div className="text-xs text-white/50">{p.sign}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm text-white/80">{p.longitude_deg.toFixed(2)}°</div>
-                    <div className="text-[10px] text-white/40 uppercase tracking-wider">
-                      h{p.house ?? "—"} · {p.speed_deg_per_day < 0 ? "R" : ""}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        ) : null}
-
         {/* tabs */}
         <div className="flex items-center gap-1 rounded-md bg-[var(--color-card)] border border-[var(--color-border)] p-1 w-fit">
           {["Daily", "Weekly", "Monthly", "Yearly"].map((t, i) => (
             <button
               key={t}
+              type="button"
+              disabled={i !== 0}
               className={
                 i === 0
                   ? "px-4 py-1.5 text-xs font-semibold rounded bg-[var(--color-brand-violet)] text-white"
-                  : "px-4 py-1.5 text-xs text-white/60 hover:text-white"
+                  : "px-4 py-1.5 text-xs text-white/35 cursor-not-allowed"
               }
+              title={i === 0 ? undefined : "Coming next in Phase 2"}
             >
               {t}
             </button>
           ))}
         </div>
 
-        {/* mini horoscopes */}
+        {/* AI domain readings — career / love / health */}
         <div className="grid md:grid-cols-3 gap-5">
-          {HOROSCOPES.map((h) => (
-            <Card key={h.title} className="tilt">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-[var(--color-brand-gold)]">{h.title}</h3>
-                <div className="text-2xl font-semibold text-white">
-                  <CountUp to={h.score} duration={1500} />
+          {(["career", "love", "health"] as const).map((domain) => {
+            const d = domains[domain];
+            const title = domain.charAt(0).toUpperCase() + domain.slice(1);
+            return (
+              <Card key={domain} className="tilt">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-[var(--color-brand-gold)]">{title}</h3>
+                  <div className="text-2xl font-semibold text-white">
+                    <CountUp to={d.score} duration={1500} />
+                  </div>
                 </div>
-              </div>
-              <p className="text-sm text-white/70 leading-relaxed">{h.body}</p>
-              <div className="mt-4 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-[var(--color-brand-violet)] to-[var(--color-brand-aqua)]"
-                  style={{ width: `${h.score}%` }}
-                />
-              </div>
-            </Card>
-          ))}
+                <p className="text-sm text-white/70 leading-relaxed">{d.body}</p>
+                <div className="mt-4 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-[var(--color-brand-violet)] to-[var(--color-brand-aqua)]"
+                    style={{ width: `${d.score}%` }}
+                  />
+                </div>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </>
