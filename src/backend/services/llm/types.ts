@@ -8,6 +8,8 @@ export interface LlmGenerateInput {
   /** Soft cap. Implementations clamp to provider limits. */
   maxOutputTokens?: number;
   temperature?: number;
+  /** Optional override for the provider's default model — long-form routes pick gemini-2.5-pro. */
+  modelOverride?: string;
 }
 
 export interface LlmGenerateResult {

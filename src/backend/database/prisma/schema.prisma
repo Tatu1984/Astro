@@ -53,6 +53,7 @@ model User {
   profiles          Profile[]
   charts            Chart[]
   predictions       Prediction[]        @relation("UserPredictions")
+  reports           Report[]            @relation("UserReports")
   chatSessions      AiChatSession[]     @relation("UserChatSessions")
   astrologerProfile AstrologerProfile?  @relation("AstrologerProfileUser")
   onboardedAstrologers AstrologerProfile[] @relation("AstrologerOnboardedBy")
@@ -206,6 +207,7 @@ model Profile {
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   charts         Chart[]
   predictions    Prediction[]
+  reports        Report[]
   chatSessions   AiChatSession[]
 
   @@index([userId])
@@ -255,6 +257,7 @@ model Chart {
   user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   profile      Profile?        @relation(fields: [profileId], references: [id], onDelete: SetNull)
   predictions  Prediction[]
+  reports      Report[]
   chatSessions AiChatSession[]
 
   @@index([userId])
@@ -304,8 +307,43 @@ model Prediction {
   @@unique([userId, profileId, kind, periodStart])
 }
 
-// User <-> AiChatSession relation already declared above the Prediction
-// block; nothing to do here.
+// =========================
+// LONG-FORM REPORTS (LLM-generated markdown)
+// =========================
+
+enum ReportKind {
+  NATAL_FULL
+  CAREER_WEALTH
+  LOVE_MARRIAGE
+  HEALTH
+  EDUCATION
+  SPIRITUAL
+}
+
+model Report {
+  id           String     @id @default(cuid())
+  userId       String
+  profileId    String?
+  chartId      String?
+  kind         ReportKind
+  title        String
+  bodyMarkdown String     @db.Text
+  pdfUrl       String?
+  llmProvider  String?
+  llmModel     String?
+  inputTokens  Int        @default(0)
+  outputTokens Int        @default(0)
+  costUsdMicro Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  user    User     @relation("UserReports", fields: [userId], references: [id], onDelete: Cascade)
+  profile Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  chart   Chart?   @relation(fields: [chartId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([profileId, kind])
+}
 
 // =========================
 // AI CHAT WITH CHART

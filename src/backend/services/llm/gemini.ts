@@ -34,8 +34,9 @@ export class GeminiProvider implements LlmProvider {
     const ai = this.getClient();
 
     try {
+      const model = input.modelOverride ?? DEFAULT_MODEL;
       const result = await ai.models.generateContent({
-        model: DEFAULT_MODEL,
+        model,
         contents: input.userPrompt,
         config: {
           systemInstruction: input.systemPrompt,
@@ -70,7 +71,7 @@ export class GeminiProvider implements LlmProvider {
       return {
         text,
         provider: "gemini",
-        model: DEFAULT_MODEL,
+        model,
         inputTokens,
         outputTokens,
         costUsdMicro: cost,
