@@ -1,10 +1,15 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, Calendar, Flame, Sparkles, TrendingUp } from "lucide-react";
 
 import { auth } from "@/auth";
 import { prisma } from "@/backend/database/client";
 import { resolveNatal } from "@/backend/services/chart.service";
-import { resolveDailyHoroscope, type DailyHoroscopePayload } from "@/backend/services/horoscope.service";
+import {
+  resolveHoroscope,
+  type HoroscopePayload,
+  type ResolveHoroscopeKind,
+} from "@/backend/services/horoscope.service";
 import { ChartWheel } from "@/frontend/components/astro/ChartWheel";
 import { Aurora } from "@/frontend/components/effects/Aurora";
 import { CountUp } from "@/frontend/components/effects/CountUp";
@@ -20,11 +25,18 @@ const TILES = [
   { icon: Flame,      title: "Reading streak",    body: "Streak tracking with Phase 2.5",  tone: "rose"   as const },
 ];
 
-const FALLBACK_DOMAINS: DailyHoroscopePayload["domains"] = {
+const FALLBACK_DOMAINS: HoroscopePayload["domains"] = {
   career: { score: 70, body: "Live AI horoscope appears here once GEMINI_API_KEY is set." },
   love:   { score: 70, body: "Live AI horoscope appears here once GEMINI_API_KEY is set." },
   health: { score: 70, body: "Live AI horoscope appears here once GEMINI_API_KEY is set." },
 };
+
+const PERIOD_TABS: Array<{ kind: ResolveHoroscopeKind; label: string }> = [
+  { kind: "DAILY", label: "Daily" },
+  { kind: "WEEKLY", label: "Weekly" },
+  { kind: "MONTHLY", label: "Monthly" },
+  { kind: "YEARLY", label: "Yearly" },
+];
 
 function initialsFor(input: string | null | undefined): string {
   if (!input) return "U";
@@ -32,9 +44,17 @@ function initialsFor(input: string | null | undefined): string {
   return (parts[0]?.[0] ?? "U").toUpperCase() + (parts[1]?.[0] ?? "").toUpperCase();
 }
 
-export default async function UserToday() {
+export default async function UserToday({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>;
+}) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
+
+  const params = await searchParams;
+  const periodParam = (params.period ?? "DAILY").toUpperCase() as ResolveHoroscopeKind;
+  const activeKind: ResolveHoroscopeKind = (PERIOD_TABS.find((t) => t.kind === periodParam)?.kind) ?? "DAILY";
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -52,7 +72,7 @@ export default async function UserToday() {
   const profile = user.profiles[0];
   let chart: NatalResponse | null = null;
   let chartError: string | null = null;
-  let horoscope: DailyHoroscopePayload | null = null;
+  let horoscope: HoroscopePayload | null = null;
   let horoscopeError: string | null = null;
   let horoscopeProvider: string | null = null;
 
@@ -76,9 +96,10 @@ export default async function UserToday() {
 
     if (chart) {
       try {
-        const result = await resolveDailyHoroscope({
+        const result = await resolveHoroscope({
           userId: user.id,
           profileId: profile.id,
+          kind: activeKind,
         });
         horoscope = result.payload;
         horoscopeProvider = `${result.prediction.llmProvider} · ${result.prediction.llmModel}${result.cached ? " · cached" : ""}`;
@@ -161,22 +182,20 @@ export default async function UserToday() {
           </div>
         </div>
 
-        {/* tabs */}
+        {/* tabs — each one fetches a different cached Prediction */}
         <div className="flex items-center gap-1 rounded-md bg-[var(--color-card)] border border-[var(--color-border)] p-1 w-fit">
-          {["Daily", "Weekly", "Monthly", "Yearly"].map((t, i) => (
-            <button
-              key={t}
-              type="button"
-              disabled={i !== 0}
+          {PERIOD_TABS.map((t) => (
+            <Link
+              key={t.kind}
+              href={`/user?period=${t.kind}`}
               className={
-                i === 0
+                activeKind === t.kind
                   ? "px-4 py-1.5 text-xs font-semibold rounded bg-[var(--color-brand-violet)] text-white"
-                  : "px-4 py-1.5 text-xs text-white/35 cursor-not-allowed"
+                  : "px-4 py-1.5 text-xs rounded text-white/60 hover:text-white hover:bg-white/5"
               }
-              title={i === 0 ? undefined : "Coming next in Phase 2"}
             >
-              {t}
-            </button>
+              {t.label}
+            </Link>
           ))}
         </div>
 

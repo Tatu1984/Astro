@@ -1,19 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/auth";
-import { HoroscopeError, resolveDailyHoroscope } from "@/backend/services/horoscope.service";
+import { HoroscopeError, resolveHoroscope, type ResolveHoroscopeKind } from "@/backend/services/horoscope.service";
 import { LlmError } from "@/backend/services/llm/types";
 
-export async function GET(req: NextRequest) {
+const KINDS: ReadonlyArray<ResolveHoroscopeKind> = ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"];
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ kind: string }> },
+) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { kind: rawKind } = await params;
+  const kind = rawKind.toUpperCase() as ResolveHoroscopeKind;
+  if (!KINDS.includes(kind)) {
+    return NextResponse.json({ error: `unknown kind '${rawKind}'` }, { status: 400 });
+  }
 
   const profileId = req.nextUrl.searchParams.get("profileId");
   if (!profileId) return NextResponse.json({ error: "profileId required" }, { status: 400 });
 
   try {
-    const result = await resolveDailyHoroscope({ userId: session.user.id, profileId });
+    const result = await resolveHoroscope({ userId: session.user.id, profileId, kind });
     return NextResponse.json({
+      kind,
       cached: result.cached,
       payload: result.payload,
       generatedAt: result.prediction.createdAt,

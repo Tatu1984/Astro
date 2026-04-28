@@ -1,10 +1,13 @@
-import type { Prediction, Prisma } from "@prisma/client";
+import type { Prediction, PredictionKind, Prisma } from "@prisma/client";
 import { fromZonedTime, toZonedTime } from "date-fns-tz";
 
 import { prisma } from "@/backend/database/client";
 import { resolveNatal } from "@/backend/services/chart.service";
 import { callLlm } from "@/backend/services/llm/router";
-import { buildDailyHoroscopePrompt } from "@/backend/services/prompt-builder";
+import {
+  buildHoroscopePrompt,
+  type HoroscopeKind,
+} from "@/backend/services/prompt-builder";
 import { LlmError } from "@/backend/services/llm/types";
 
 export class HoroscopeError extends Error {
@@ -14,7 +17,7 @@ export class HoroscopeError extends Error {
   }
 }
 
-export interface DailyHoroscopePayload {
+export interface HoroscopePayload {
   headline: string;
   body: string;
   domains: {
@@ -24,32 +27,79 @@ export interface DailyHoroscopePayload {
   };
 }
 
-interface ResolveDailyArgs {
+export type ResolveHoroscopeKind = HoroscopeKind;
+
+interface ResolveArgs {
   userId: string;
   profileId: string;
-  /** Optional override; defaults to "today" in the profile's timezone. */
+  kind: ResolveHoroscopeKind;
   forDate?: Date;
 }
 
+const KIND_TO_PRISMA: Record<ResolveHoroscopeKind, PredictionKind> = {
+  DAILY: "DAILY",
+  WEEKLY: "WEEKLY",
+  MONTHLY: "MONTHLY",
+  YEARLY: "YEARLY",
+};
+
 /**
- * Compute "midnight UTC of the local day" given a Date and a timezone.
- * Used as the canonical period_start key so that the same calendar day in
- * the profile's tz always maps to the same Prediction row.
+ * Compute the period boundaries for a given kind around a moment, in the
+ * profile's timezone. Returns UTC Date objects.
+ *
+ *   DAILY   → local midnight today   → +1 day
+ *   WEEKLY  → local Monday 00:00     → +7 days
+ *   MONTHLY → local 1st of month     → +1 month
+ *   YEARLY  → local Jan 1            → +1 year
  */
-function startOfLocalDayUtc(d: Date, timezone: string): Date {
+function periodBoundsUtc(
+  d: Date,
+  kind: ResolveHoroscopeKind,
+  timezone: string,
+): { start: Date; end: Date } {
   const local = toZonedTime(d, timezone);
+  let startLocal: Date;
+  let endLocal: Date;
   const y = local.getFullYear();
   const m = local.getMonth();
   const day = local.getDate();
-  // Construct local midnight string then back to UTC
-  const localMidnight = new Date(Date.UTC(y, m, day, 0, 0, 0));
-  return fromZonedTime(localMidnight, timezone);
+
+  switch (kind) {
+    case "DAILY": {
+      startLocal = new Date(Date.UTC(y, m, day, 0, 0, 0));
+      endLocal = new Date(Date.UTC(y, m, day + 1, 0, 0, 0));
+      break;
+    }
+    case "WEEKLY": {
+      // ISO weeks: Monday=1..Sunday=7. JS Date.getDay(): Sun=0..Sat=6.
+      const dow = local.getDay() === 0 ? 7 : local.getDay();
+      const monday = day - (dow - 1);
+      startLocal = new Date(Date.UTC(y, m, monday, 0, 0, 0));
+      endLocal = new Date(Date.UTC(y, m, monday + 7, 0, 0, 0));
+      break;
+    }
+    case "MONTHLY": {
+      startLocal = new Date(Date.UTC(y, m, 1, 0, 0, 0));
+      endLocal = new Date(Date.UTC(y, m + 1, 1, 0, 0, 0));
+      break;
+    }
+    case "YEARLY": {
+      startLocal = new Date(Date.UTC(y, 0, 1, 0, 0, 0));
+      endLocal = new Date(Date.UTC(y + 1, 0, 1, 0, 0, 0));
+      break;
+    }
+  }
+
+  return {
+    start: fromZonedTime(startLocal, timezone),
+    end: fromZonedTime(endLocal, timezone),
+  };
 }
 
-export async function resolveDailyHoroscope(args: ResolveDailyArgs): Promise<{
+export async function resolveHoroscope(args: ResolveArgs): Promise<{
   cached: boolean;
   prediction: Prediction;
-  payload: DailyHoroscopePayload;
+  payload: HoroscopePayload;
 }> {
   const profile = await prisma.profile.findUnique({
     where: { id: args.profileId },
@@ -68,16 +118,14 @@ export async function resolveDailyHoroscope(args: ResolveDailyArgs): Promise<{
   if (profile.userId !== args.userId) throw new HoroscopeError(403, "forbidden");
 
   const forDate = args.forDate ?? new Date();
-  const periodStart = startOfLocalDayUtc(forDate, profile.timezone);
-  const periodEnd = new Date(periodStart.getTime() + 24 * 60 * 60 * 1000);
+  const { start: periodStart, end: periodEnd } = periodBoundsUtc(forDate, args.kind, profile.timezone);
 
-  // Cache check — same user/profile/day always returns the same row.
   const existing = await prisma.prediction.findUnique({
     where: {
       userId_profileId_kind_periodStart: {
         userId: args.userId,
         profileId: args.profileId,
-        kind: "DAILY",
+        kind: KIND_TO_PRISMA[args.kind],
         periodStart,
       },
     },
@@ -86,11 +134,10 @@ export async function resolveDailyHoroscope(args: ResolveDailyArgs): Promise<{
     return {
       cached: true,
       prediction: existing,
-      payload: existing.payload as unknown as DailyHoroscopePayload,
+      payload: existing.payload as unknown as HoroscopePayload,
     };
   }
 
-  // Cache miss: compute or pull cached natal chart.
   const { chart, row: chartRow } = await resolveNatal({
     userId: args.userId,
     profileId: args.profileId,
@@ -103,50 +150,44 @@ export async function resolveDailyHoroscope(args: ResolveDailyArgs): Promise<{
     },
   });
 
-  const { systemPrompt, userPrompt, facts } = buildDailyHoroscopePrompt({
+  const { systemPrompt, userPrompt, facts } = buildHoroscopePrompt({
+    kind: args.kind,
     fullName: profile.fullName,
     birthDateUtc: profile.birthDate,
     birthPlace: profile.birthPlace,
     timezone: profile.timezone,
     chart,
-    forDate,
+    periodStart,
+    periodEnd,
   });
 
   const llm = await callLlm({
-    route: "horoscopes.daily",
+    route: `horoscopes.${args.kind.toLowerCase()}`,
     userId: args.userId,
     systemPrompt,
     userPrompt,
     jsonOutput: true,
     temperature: 0.7,
-    maxOutputTokens: 1024,
+    maxOutputTokens: args.kind === "YEARLY" ? 2048 : 1024,
   });
 
-  let payload: DailyHoroscopePayload;
+  let payload: HoroscopePayload;
   try {
-    // Strip markdown code fences defensively in case the model wraps JSON
-    // in ```json ... ``` blocks despite responseMimeType. Find first { and
-    // last } so any reasoning prefix/suffix is also tolerated.
     const raw = llm.text.trim();
     const start = raw.indexOf("{");
     const end = raw.lastIndexOf("}");
     const json = start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
-    payload = JSON.parse(json) as DailyHoroscopePayload;
+    payload = JSON.parse(json) as HoroscopePayload;
   } catch {
-    throw new LlmError(
-      "router",
-      502,
-      `LLM returned non-JSON response (first 200 chars): ${llm.text.slice(0, 200)}`,
-    );
+    throw new LlmError("router", 502, `LLM returned non-JSON response: ${llm.text.slice(0, 200)}`);
   }
 
-  // Persist
   const prediction = await prisma.prediction.create({
     data: {
       userId: args.userId,
       profileId: args.profileId,
       chartId: chartRow.id,
-      kind: "DAILY",
+      kind: KIND_TO_PRISMA[args.kind],
       periodStart,
       periodEnd,
       facts: facts as unknown as Prisma.InputJsonValue,
@@ -163,3 +204,9 @@ export async function resolveDailyHoroscope(args: ResolveDailyArgs): Promise<{
 
   return { cached: false, prediction, payload };
 }
+
+// Backwards-compat alias for the original daily-only callsites.
+export const resolveDailyHoroscope = (args: { userId: string; profileId: string; forDate?: Date }) =>
+  resolveHoroscope({ ...args, kind: "DAILY" });
+
+export type DailyHoroscopePayload = HoroscopePayload;
