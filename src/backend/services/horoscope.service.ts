@@ -3,7 +3,9 @@ import { fromZonedTime, toZonedTime } from "date-fns-tz";
 
 import { prisma } from "@/backend/database/client";
 import { resolveNatal } from "@/backend/services/chart.service";
+import { scoreBirthData } from "@/backend/services/llm/birthDataQuality";
 import { callLlm } from "@/backend/services/llm/router";
+import { appendDisclaimer, flagUnsafeOutput, softenFlaggedOutput } from "@/backend/services/llm/safety";
 import {
   buildHoroscopePrompt,
   type HoroscopeKind,
@@ -210,10 +212,20 @@ export async function resolveHoroscope(args: ResolveArgs): Promise<{
       latitude: true,
       longitude: true,
       timezone: true,
+      unknownTime: true,
     },
   });
   if (!profile) throw new HoroscopeError(404, "profile not found");
   if (profile.userId !== args.userId) throw new HoroscopeError(403, "forbidden");
+
+  const quality = scoreBirthData({
+    unknownTime: profile.unknownTime,
+    birthDate: profile.birthDate,
+    latitude: Number(profile.latitude),
+    longitude: Number(profile.longitude),
+    birthPlace: profile.birthPlace,
+    timezone: profile.timezone,
+  });
 
   const forDate = args.forDate ?? new Date();
   const { start: periodStart, end: periodEnd } = periodBoundsUtc(forDate, args.kind, profile.timezone);
@@ -259,6 +271,7 @@ export async function resolveHoroscope(args: ResolveArgs): Promise<{
     chart,
     periodStart,
     periodEnd,
+    quality,
   });
 
   const llm = await callLlm({
@@ -281,6 +294,14 @@ export async function resolveHoroscope(args: ResolveArgs): Promise<{
   } catch {
     throw new LlmError("router", 502, `LLM returned non-JSON response: ${llm.text.slice(0, 200)}`);
   }
+
+  const surface = `HOROSCOPE_${args.kind}` as const;
+  const flagged = flagUnsafeOutput(payload.body);
+  if (flagged.flagged) {
+    console.warn("[llm.safety] horoscope flagged", { surface, reasons: flagged.reasons, userId: args.userId });
+    payload = { ...payload, body: softenFlaggedOutput(payload.body) };
+  }
+  payload = { ...payload, body: appendDisclaimer(payload.body, surface) };
 
   const prediction = await prisma.prediction.create({
     data: {

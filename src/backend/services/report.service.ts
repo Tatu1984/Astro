@@ -2,7 +2,9 @@ import type { Prisma, Report, ReportKind } from "@prisma/client";
 
 import { prisma } from "@/backend/database/client";
 import { resolveNatal } from "@/backend/services/chart.service";
+import { caveatsForPrompt, scoreBirthData } from "@/backend/services/llm/birthDataQuality";
 import { callLlm } from "@/backend/services/llm/router";
+import { appendDisclaimer, flagUnsafeOutput, softenFlaggedOutput } from "@/backend/services/llm/safety";
 
 export class ReportError extends Error {
   constructor(public status: number, message: string) {
@@ -85,10 +87,21 @@ export async function generateReport(args: GenerateArgs): Promise<Report> {
       latitude: true,
       longitude: true,
       timezone: true,
+      unknownTime: true,
     },
   });
   if (!profile) throw new ReportError(404, "profile not found");
   if (profile.userId !== args.userId) throw new ReportError(403, "forbidden");
+
+  const quality = scoreBirthData({
+    unknownTime: profile.unknownTime,
+    birthDate: profile.birthDate,
+    latitude: Number(profile.latitude),
+    longitude: Number(profile.longitude),
+    birthPlace: profile.birthPlace,
+    timezone: profile.timezone,
+  });
+  const qualityBlock = caveatsForPrompt(quality);
 
   const { chart, row: chartRow } = await resolveNatal({
     userId: args.userId,
@@ -116,7 +129,7 @@ export async function generateReport(args: GenerateArgs): Promise<Report> {
 - Include a short intro paragraph; 4-6 themed sections each anchored in two or three named placements from the chart; a "Strengths" section as a bulleted list (3-5 items, 1-line each); a "Growth edges" section similarly bulleted; and a closing paragraph (no heading) that lands the report on a grounded, encouraging note.
 - Do not mention transits, dashas, or current sky events — those depend on data this prompt doesn't have. Stick to the natal chart.
 - This is a Phase 2 report with no remedial advice (no gems, mantras, etc.) — reserve those for a later module.
-`;
+${qualityBlock ? `\n${qualityBlock}\n` : ""}`;
 
   const userPrompt = `Subject: ${REPORT_KIND_TITLES[args.kind]} for ${profile.fullName}, born ${profile.birthDate.toISOString()} (${profile.timezone}) in ${profile.birthPlace}.
 
@@ -146,6 +159,19 @@ Write the markdown report now.
     modelOverride: "gemini-2.5-pro",
   });
 
+  let body = llm.text;
+  const flagged = flagUnsafeOutput(body);
+  if (flagged.flagged) {
+    console.warn("[llm.safety] report flagged", {
+      surface: "REPORT",
+      reasons: flagged.reasons,
+      userId: args.userId,
+      kind: args.kind,
+    });
+    body = softenFlaggedOutput(body);
+  }
+  body = appendDisclaimer(body, "REPORT");
+
   const report = await prisma.report.create({
     data: {
       userId: args.userId,
@@ -153,7 +179,7 @@ Write the markdown report now.
       chartId: chartRow.id,
       kind: args.kind,
       title,
-      bodyMarkdown: llm.text,
+      bodyMarkdown: body,
       llmProvider: llm.provider,
       llmModel: llm.model,
       inputTokens: llm.inputTokens,

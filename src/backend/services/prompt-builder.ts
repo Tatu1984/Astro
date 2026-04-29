@@ -1,3 +1,4 @@
+import { caveatsForPrompt, type BirthDataQuality } from "@/backend/services/llm/birthDataQuality";
 import type { NatalResponse } from "@/shared/types/chart";
 
 export type HoroscopeKind = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -73,6 +74,7 @@ export function buildHoroscopePrompt(args: {
   chart: NatalResponse;
   periodStart: Date;
   periodEnd: Date;
+  quality?: BirthDataQuality;
 }): HoroscopePromptResult {
   const dateFmt = new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
@@ -128,7 +130,7 @@ export function buildHoroscopePrompt(args: {
 - The headline is short (≤ 60 chars) and concrete.
 - Each domain (career, love, health) gets a 2–3 sentence body and an integer score 1–100 for how favourable ${guidance.period} is for that area.
 - This is a Phase 2 reading derived from the natal chart only. Real transit/dasha grounding lands in Phase 3 — keep claims about ${guidance.horizon} general about the natal energies, not specific to transits you don't have data for.
-`;
+${args.quality ? `\n${caveatsForPrompt(args.quality)}\n` : ""}`;
 
   const schema = `{
   "headline": string (≤ 60 chars),
