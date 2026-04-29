@@ -1,5 +1,28 @@
+import type { ReadingStyle } from "@prisma/client";
+
+import { prisma } from "@/backend/database/client";
 import { caveatsForPrompt, type BirthDataQuality } from "@/backend/services/llm/birthDataQuality";
 import type { NatalResponse } from "@/shared/types/chart";
+
+const STYLE_BLOCKS: Record<ReadingStyle, string> = {
+  VEDIC:
+    "Reading style: INDIAN/VEDIC. Frame readings in the Indian/Vedic context — emphasize karma, dharma, family obligations, life-stage (ashrama), and divine timing. Reference rashi, nakshatra, and dasha periods naturally. Use Hindu/Buddhist philosophical concepts like detachment, surrender to the divine, and life purpose. Tone: gently spiritual, family-aware. Continue to add the plain-English clarification after each technical term as instructed elsewhere.",
+  WESTERN:
+    "Reading style: WESTERN. Frame readings in the Western psychological / self-actualization context — emphasize personal growth, agency, conscious choice, shadow work, individuation. Reference psychological archetypes (Jungian) where natural. Tone: introspective, growth-focused. Continue to add the plain-English clarification after each technical term as instructed elsewhere.",
+};
+
+export function readingStyleBlock(style: ReadingStyle | null | undefined): string {
+  return STYLE_BLOCKS[style ?? "VEDIC"];
+}
+
+export async function getReadingStyleForUser(userId: string | null | undefined): Promise<ReadingStyle> {
+  if (!userId) return "VEDIC";
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { readingStyle: true },
+  });
+  return u?.readingStyle ?? "VEDIC";
+}
 
 export type HoroscopeKind = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 
@@ -75,6 +98,7 @@ export function buildHoroscopePrompt(args: {
   periodStart: Date;
   periodEnd: Date;
   quality?: BirthDataQuality;
+  readingStyle?: ReadingStyle | null;
 }): HoroscopePromptResult {
   const dateFmt = new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
@@ -130,6 +154,7 @@ export function buildHoroscopePrompt(args: {
 - The headline is short (≤ 60 chars) and concrete.
 - Each domain (career, love, health) gets a 2–3 sentence body and an integer score 1–100 for how favourable ${guidance.period} is for that area.
 - This is a Phase 2 reading derived from the natal chart only. Real transit/dasha grounding lands in Phase 3 — keep claims about ${guidance.horizon} general about the natal energies, not specific to transits you don't have data for.
+- ${readingStyleBlock(args.readingStyle ?? "VEDIC")}
 ${args.quality ? `\n${caveatsForPrompt(args.quality)}\n` : ""}`;
 
   const schema = `{

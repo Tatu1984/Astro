@@ -9,6 +9,7 @@ import {
   type CompositeChart,
 } from "@/backend/services/composite.service";
 import { callLlm } from "@/backend/services/llm/router";
+import { getReadingStyleForUser, readingStyleBlock } from "@/backend/services/prompt-builder";
 import { resolveVedic } from "@/backend/services/vedic.service";
 import type { NatalResponse, PlanetPosition } from "@/shared/types/chart";
 
@@ -245,6 +246,7 @@ export async function resolveCompatibility(args: ResolveCompatArgs): Promise<{
 
   // LLM narrative
   const focus = KIND_FOCUS[args.kind];
+  const styleBlock = readingStyleBlock(await getReadingStyleForUser(args.userId));
   const ashtakootHint = ashtakoot
     ? `\n- Ashtakoot Milan total is ${ashtakoot.total}/36 — verdict: ${ashtakoot.verdict}. Reference one or two specific kootas only when relevant (e.g. "Nadi koota is matched/mismatched"). Don't list every koota.`
     : "";
@@ -260,7 +262,8 @@ export async function resolveCompatibility(args: ResolveCompatArgs): Promise<{
 - Tone: warm, modern English. Specific over generic. Avoid clichés.
 - Focus areas for a ${args.kind.toLowerCase()} compatibility: ${focus}.
 - Reference 2-3 specific aspects by name (e.g. "your Sun trine her Moon"). Don't list every aspect; use the strongest.
-- The score given is a soft summary. Don't over-index on it; the texture is what matters.${ashtakootHint}${compositeHint}`;
+- The score given is a soft summary. Don't over-index on it; the texture is what matters.
+- ${styleBlock}${ashtakootHint}${compositeHint}`;
 
   const synastryFacts = {
     kind: args.kind,

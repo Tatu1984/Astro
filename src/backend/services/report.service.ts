@@ -5,6 +5,7 @@ import { resolveNatal } from "@/backend/services/chart.service";
 import { caveatsForPrompt, scoreBirthData } from "@/backend/services/llm/birthDataQuality";
 import { callLlm } from "@/backend/services/llm/router";
 import { appendDisclaimer, flagUnsafeOutput, softenFlaggedOutput } from "@/backend/services/llm/safety";
+import { getReadingStyleForUser, readingStyleBlock } from "@/backend/services/prompt-builder";
 
 export class ReportError extends Error {
   constructor(public status: number, message: string) {
@@ -117,6 +118,7 @@ export async function generateReport(args: GenerateArgs): Promise<Report> {
 
   const focus = REPORT_KIND_FOCUS[args.kind];
   const title = `${profile.fullName} · ${REPORT_KIND_TITLES[args.kind]}`;
+  const styleBlock = readingStyleBlock(await getReadingStyleForUser(args.userId));
 
   const systemPrompt = `You are a thoughtful, modern astrologer writing a long-form natal report. The reader is a thinking adult; treat them with respect and avoid clichés. Rules:
 
@@ -129,6 +131,7 @@ export async function generateReport(args: GenerateArgs): Promise<Report> {
 - Include a short intro paragraph; 4-6 themed sections each anchored in two or three named placements from the chart; a "Strengths" section as a bulleted list (3-5 items, 1-line each); a "Growth edges" section similarly bulleted; and a closing paragraph (no heading) that lands the report on a grounded, encouraging note.
 - Do not mention transits, dashas, or current sky events — those depend on data this prompt doesn't have. Stick to the natal chart.
 - This is a Phase 2 report with no remedial advice (no gems, mantras, etc.) — reserve those for a later module.
+- ${styleBlock}
 ${qualityBlock ? `\n${qualityBlock}\n` : ""}`;
 
   const userPrompt = `Subject: ${REPORT_KIND_TITLES[args.kind]} for ${profile.fullName}, born ${profile.birthDate.toISOString()} (${profile.timezone}) in ${profile.birthPlace}.

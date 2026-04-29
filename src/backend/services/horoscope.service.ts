@@ -8,6 +8,7 @@ import { callLlm, callLlmStream } from "@/backend/services/llm/router";
 import { appendDisclaimer, flagUnsafeOutput, softenFlaggedOutput } from "@/backend/services/llm/safety";
 import {
   buildHoroscopePrompt,
+  getReadingStyleForUser,
   type HoroscopeKind,
 } from "@/backend/services/prompt-builder";
 import { LlmError } from "@/backend/services/llm/types";
@@ -298,6 +299,7 @@ export async function resolveHoroscope(args: ResolveArgs): Promise<{
     },
   });
 
+  const readingStyle = await getReadingStyleForUser(args.userId);
   const { systemPrompt, userPrompt, facts } = buildHoroscopePrompt({
     kind: args.kind,
     fullName: profile.fullName,
@@ -308,6 +310,7 @@ export async function resolveHoroscope(args: ResolveArgs): Promise<{
     periodStart,
     periodEnd,
     quality,
+    readingStyle,
   });
 
   const llm = await callLlm({
@@ -468,6 +471,7 @@ export async function* resolveHoroscopeStream(
     },
   });
 
+  const readingStyle = await getReadingStyleForUser(args.userId);
   const { systemPrompt, userPrompt, facts } = buildHoroscopePrompt({
     kind: args.kind,
     fullName: profile.fullName,
@@ -478,6 +482,7 @@ export async function* resolveHoroscopeStream(
     periodStart,
     periodEnd,
     quality,
+    readingStyle,
   });
 
   const stream = callLlmStream({

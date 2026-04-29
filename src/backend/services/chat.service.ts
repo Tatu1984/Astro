@@ -9,6 +9,7 @@ import {
 } from "@/backend/services/chat-memory.service";
 import { resolveNatal } from "@/backend/services/chart.service";
 import { callLlm, callLlmStream } from "@/backend/services/llm/router";
+import { getReadingStyleForUser, readingStyleBlock } from "@/backend/services/prompt-builder";
 
 export class ChatError extends Error {
   constructor(public status: number, message: string) {
@@ -198,7 +199,9 @@ ${JSON.stringify(
       // ignore malformed memory carrier
     }
   }
-  const systemPrompt = memoryBlock ? `${SYSTEM_PROMPT}\n\n${memoryBlock}` : SYSTEM_PROMPT;
+  const readingStyle = await getReadingStyleForUser(args.userId);
+  const baseSystem = `${SYSTEM_PROMPT}\n\n${readingStyleBlock(readingStyle)}`;
+  const systemPrompt = memoryBlock ? `${baseSystem}\n\n${memoryBlock}` : baseSystem;
 
   const conversational = session.messages.filter((m) => m.role !== "SYSTEM");
   const recentTurns = conversational.slice(-MAX_HISTORY_TURNS);
