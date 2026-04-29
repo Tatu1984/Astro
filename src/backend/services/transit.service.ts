@@ -609,6 +609,115 @@ export interface CalendarEvent {
   natalSign?: string;
   natalHouse?: number | null;
   severity: 1 | 2 | 3; // 1=minor, 3=major
+  /** plain-English one-liner for non-astrologers; stable across renders */
+  humanText: string;
+}
+
+const PLANET_HUMAN: Record<string, string> = {
+  Sun: "identity",
+  Moon: "feelings",
+  Mercury: "communication style",
+  Venus: "relating and values",
+  Mars: "drive",
+  Jupiter: "growth themes",
+  Saturn: "discipline",
+  Uranus: "the urge for change",
+  Neptune: "imagination",
+  Pluto: "deep change",
+  MeanNode: "destiny axis",
+};
+
+const SIGN_HUMAN: Record<string, string> = {
+  Aries: "bold and direct",
+  Taurus: "steady and grounded",
+  Gemini: "curious and quick",
+  Cancer: "tender and protective",
+  Leo: "warm and expressive",
+  Virgo: "careful and analytical",
+  Libra: "fair and relational",
+  Scorpio: "intense and private",
+  Sagittarius: "open and adventurous",
+  Capricorn: "ambitious and disciplined",
+  Aquarius: "independent and original",
+  Pisces: "dreamy and empathic",
+};
+
+const ASPECT_HUMAN: Record<TransitAspect["aspect"], string> = {
+  conjunction: "fuses with",
+  opposition: "stands across from",
+  square: "presses against",
+  trine: "flows easily with",
+  sextile: "supports",
+};
+
+const ASPECT_FEEL: Record<TransitAspect["aspect"], string> = {
+  conjunction: "energies merge — a fresh starting point",
+  opposition: "tension between two needs — find balance",
+  square: "friction that pushes you to act",
+  trine: "easy support — make use of the open door",
+  sextile: "a quiet opportunity — small effort, real return",
+};
+
+function ingressDuration(planet: string): string {
+  switch (planet) {
+    case "Sun":
+      return "the next ~30 days";
+    case "Mercury":
+      return "the next ~3 weeks";
+    case "Venus":
+      return "the next ~3-4 weeks";
+    case "Mars":
+      return "the next ~6 weeks";
+    case "Jupiter":
+      return "the next ~year";
+    case "Saturn":
+      return "the next ~2.5 years";
+    case "Uranus":
+      return "the next ~7 years";
+    case "Neptune":
+    case "Pluto":
+      return "many years to come";
+    default:
+      return "this stretch";
+  }
+}
+
+export function humanizeCalendarEvent(e: Omit<CalendarEvent, "humanText">): string {
+  if (e.type === "INGRESS" && e.toSign) {
+    const themeOld = e.fromSign ? SIGN_HUMAN[e.fromSign] ?? e.fromSign : "the previous sign";
+    const themeNew = SIGN_HUMAN[e.toSign] ?? e.toSign;
+    const planetTheme = PLANET_HUMAN[e.planet] ?? e.planet.toLowerCase();
+    return `${e.planet} moves into ${e.toSign} — ${planetTheme} shifts from ${themeOld} to ${themeNew} for ${ingressDuration(e.planet)}`;
+  }
+  if (e.type === "RETRO_STATION" && e.station) {
+    const planetTheme = PLANET_HUMAN[e.planet] ?? e.planet.toLowerCase();
+    if (e.station === "retrograde") {
+      return `${e.planet} turns retrograde — a few weeks to review and re-do anything tied to ${planetTheme}`;
+    }
+    return `${e.planet} turns direct — ${planetTheme} starts moving forward again`;
+  }
+  if (e.type === "ASPECT_EXACT" && e.aspect && e.natal) {
+    const verb = ASPECT_HUMAN[e.aspect];
+    const feel = ASPECT_FEEL[e.aspect];
+    const houseBit = e.natalHouse ? ` (in your ${ordinal(e.natalHouse)} house)` : "";
+    return `${e.planet} ${verb} your natal ${e.natal}${houseBit} — ${feel}`;
+  }
+  return `${e.planet} event`;
+}
+
+function ordinal(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
 }
 
 const CAL_ASPECTS = [
@@ -678,27 +787,29 @@ export async function buildTransitCalendar(args: CalendarBuildArgs): Promise<Cal
 
       // INGRESS — sign change
       if (prev.sign !== curr.sign) {
-        events.push({
-          type: "INGRESS",
+        const ev = {
+          type: "INGRESS" as const,
           date: new Date(samples[i]).toISOString(),
           planet,
           fromSign: prev.sign,
           toSign: curr.sign,
           severity: severityFor(planet),
-        });
+        };
+        events.push({ ...ev, humanText: humanizeCalendarEvent(ev) });
       }
 
       // RETRO_STATION — speed sign change
       const ps = prev.speed_deg_per_day;
       const cs = curr.speed_deg_per_day;
       if (ps !== 0 && cs !== 0 && Math.sign(ps) !== Math.sign(cs)) {
-        events.push({
-          type: "RETRO_STATION",
+        const ev = {
+          type: "RETRO_STATION" as const,
           date: new Date(samples[i]).toISOString(),
           planet,
-          station: cs < 0 ? "retrograde" : "direct",
+          station: (cs < 0 ? "retrograde" : "direct") as "retrograde" | "direct",
           severity: severityFor(planet),
-        });
+        };
+        events.push({ ...ev, humanText: humanizeCalendarEvent(ev) });
       }
 
       // ASPECT_EXACT — for each natal planet × each aspect, detect sign flip
@@ -717,8 +828,8 @@ export async function buildTransitCalendar(args: CalendarBuildArgs): Promise<Cal
           // Tolerance: only emit if it looks like a real crossing (not numerical noise)
           if (Math.min(Math.abs(fPrev), Math.abs(fCurr)) > ASPECT_TOLERANCE_DEG * 30) continue;
           const exactT = samples[i - 1] + frac * (samples[i] - samples[i - 1]);
-          events.push({
-            type: "ASPECT_EXACT",
+          const ev = {
+            type: "ASPECT_EXACT" as const,
             date: new Date(exactT).toISOString(),
             planet,
             aspect: a.name,
@@ -726,7 +837,8 @@ export async function buildTransitCalendar(args: CalendarBuildArgs): Promise<Cal
             natalSign: n.sign,
             natalHouse: n.house,
             severity: severityFor(planet, n.name, a.name),
-          });
+          };
+          events.push({ ...ev, humanText: humanizeCalendarEvent(ev) });
         }
       }
     }

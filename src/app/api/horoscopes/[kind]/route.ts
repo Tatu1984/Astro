@@ -28,6 +28,7 @@ export async function GET(
       kind,
       cached: result.cached,
       payload: result.payload,
+      displayFacts: result.displayFacts,
       generatedAt: result.prediction.createdAt,
       provider: result.prediction.llmProvider,
       model: result.prediction.llmModel,
