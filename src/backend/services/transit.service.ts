@@ -587,3 +587,170 @@ export async function findEclipses(args: {
 
   return events;
 }
+
+// ============================================================
+// Day-by-day transit calendar — INGRESS, RETRO_STATION, ASPECT_EXACT
+// ============================================================
+
+export type CalendarEventType = "INGRESS" | "RETRO_STATION" | "ASPECT_EXACT";
+
+export interface CalendarEvent {
+  type: CalendarEventType;
+  date: string; // ISO — interpolated for ASPECT_EXACT, daily-snapped for others
+  planet: string;
+  // INGRESS only
+  fromSign?: string;
+  toSign?: string;
+  // RETRO_STATION only
+  station?: "retrograde" | "direct";
+  // ASPECT_EXACT only
+  aspect?: TransitAspect["aspect"];
+  natal?: string;
+  natalSign?: string;
+  natalHouse?: number | null;
+  severity: 1 | 2 | 3; // 1=minor, 3=major
+}
+
+const CAL_ASPECTS = [
+  { name: "conjunction" as const, angle: 0 },
+  { name: "sextile" as const, angle: 60 },
+  { name: "square" as const, angle: 90 },
+  { name: "trine" as const, angle: 120 },
+  { name: "opposition" as const, angle: 180 },
+];
+
+const ASPECT_TOLERANCE_DEG = 1;
+
+const PLANET_WEIGHT: Record<string, number> = {
+  Sun: 3, Moon: 2, Mercury: 2, Venus: 2, Mars: 2,
+  Jupiter: 3, Saturn: 3, Uranus: 3, Neptune: 3, Pluto: 3,
+  MeanNode: 2,
+};
+
+function severityFor(transit: string, natal?: string, aspect?: TransitAspect["aspect"]): 1 | 2 | 3 {
+  const tw = PLANET_WEIGHT[transit] ?? 1;
+  const nw = natal ? PLANET_WEIGHT[natal] ?? 1 : 1;
+  const ax = aspect === "conjunction" || aspect === "opposition" ? 1 : 0;
+  const score = tw + nw + ax;
+  if (score >= 7) return 3;
+  if (score >= 5) return 2;
+  return 1;
+}
+
+function signedSeparation(transitLong: number, natalLong: number, aspectAngle: number): number {
+  // Returns the signed crossing function f(t) = (sep − aspectAngle) mapped
+  // to (−180, 180]; zero crossing means aspect is exact.
+  const raw = ((transitLong - natalLong + 540) % 360) - 180; // [-180, 180]
+  // Use absolute angular separation [0, 180]
+  const sep = Math.abs(raw);
+  return sep - aspectAngle;
+}
+
+export interface CalendarBuildArgs {
+  natal: NatalResponse;
+  fromDate: Date;
+  toDate: Date;
+}
+
+export async function buildTransitCalendar(args: CalendarBuildArgs): Promise<CalendarEvent[]> {
+  const { fromDate, toDate, natal } = args;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const start = Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate(), 12, 0, 0);
+  const end = Date.UTC(toDate.getUTCFullYear(), toDate.getUTCMonth(), toDate.getUTCDate(), 12, 0, 0);
+  if (end < start) return [];
+
+  const samples: number[] = [];
+  for (let t = start; t <= end; t += dayMs) samples.push(t);
+
+  const responses = await Promise.all(
+    samples.map((t) => computeTransit({ moment_utc: new Date(t).toISOString() })),
+  );
+
+  const events: CalendarEvent[] = [];
+  const tracked = ["Sun", "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"];
+  const natalKey = natal.planets.filter((n) => NATAL_KEY.has(n.name));
+
+  for (const planet of tracked) {
+    for (let i = 1; i < responses.length; i++) {
+      const prev = responses[i - 1].planets.find((p) => p.name === planet);
+      const curr = responses[i].planets.find((p) => p.name === planet);
+      if (!prev || !curr) continue;
+
+      // INGRESS — sign change
+      if (prev.sign !== curr.sign) {
+        events.push({
+          type: "INGRESS",
+          date: new Date(samples[i]).toISOString(),
+          planet,
+          fromSign: prev.sign,
+          toSign: curr.sign,
+          severity: severityFor(planet),
+        });
+      }
+
+      // RETRO_STATION — speed sign change
+      const ps = prev.speed_deg_per_day;
+      const cs = curr.speed_deg_per_day;
+      if (ps !== 0 && cs !== 0 && Math.sign(ps) !== Math.sign(cs)) {
+        events.push({
+          type: "RETRO_STATION",
+          date: new Date(samples[i]).toISOString(),
+          planet,
+          station: cs < 0 ? "retrograde" : "direct",
+          severity: severityFor(planet),
+        });
+      }
+
+      // ASPECT_EXACT — for each natal planet × each aspect, detect sign flip
+      // of (separation − aspectAngle). Linear interpolation gives exact moment.
+      for (const n of natalKey) {
+        for (const a of CAL_ASPECTS) {
+          const fPrev = signedSeparation(prev.longitude_deg, n.longitude_deg, a.angle);
+          const fCurr = signedSeparation(curr.longitude_deg, n.longitude_deg, a.angle);
+          if (Math.sign(fPrev) === Math.sign(fCurr)) continue;
+          // Reject huge jumps (sign flip due to wraparound rather than crossing)
+          if (Math.abs(fPrev) > 30 || Math.abs(fCurr) > 30) continue;
+          const denom = fPrev - fCurr;
+          if (Math.abs(denom) < 1e-9) continue;
+          const frac = fPrev / denom;
+          if (frac < 0 || frac > 1) continue;
+          // Tolerance: only emit if it looks like a real crossing (not numerical noise)
+          if (Math.min(Math.abs(fPrev), Math.abs(fCurr)) > ASPECT_TOLERANCE_DEG * 30) continue;
+          const exactT = samples[i - 1] + frac * (samples[i] - samples[i - 1]);
+          events.push({
+            type: "ASPECT_EXACT",
+            date: new Date(exactT).toISOString(),
+            planet,
+            aspect: a.name,
+            natal: n.name,
+            natalSign: n.sign,
+            natalHouse: n.house,
+            severity: severityFor(planet, n.name, a.name),
+          });
+        }
+      }
+    }
+  }
+
+  events.sort((x, y) => Date.parse(x.date) - Date.parse(y.date));
+  return events;
+}
+
+// In-memory cache: 24h TTL, key = userId|profileId|fromISO|toISO
+type CalendarCacheEntry = { events: CalendarEvent[]; expires: number };
+const calendarCache = new Map<string, CalendarCacheEntry>();
+const CALENDAR_TTL_MS = 24 * 60 * 60 * 1000;
+
+export function getCachedCalendar(key: string): CalendarEvent[] | null {
+  const ent = calendarCache.get(key);
+  if (!ent) return null;
+  if (ent.expires < Date.now()) {
+    calendarCache.delete(key);
+    return null;
+  }
+  return ent.events;
+}
+
+export function setCachedCalendar(key: string, events: CalendarEvent[]): void {
+  calendarCache.set(key, { events, expires: Date.now() + CALENDAR_TTL_MS });
+}

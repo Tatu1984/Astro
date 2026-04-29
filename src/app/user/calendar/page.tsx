@@ -15,10 +15,20 @@ import {
   type RetrogradeWindow,
   type UpcomingAspect,
 } from "@/backend/services/transit.service";
+import { MonthGrid } from "@/frontend/components/calendar/MonthGrid";
 import { TopBar } from "@/frontend/components/portal/TopBar";
 import { Card } from "@/frontend/components/ui/Card";
 
 export const dynamic = "force-dynamic";
+
+function defaultMonthRange(): { fromIso: string; toIso: string } {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const from = new Date(Date.UTC(y, m, 1, 0, 0, 0));
+  const to = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59));
+  return { fromIso: from.toISOString(), toIso: to.toISOString() };
+}
 
 const ASPECT_TONE: Record<string, string> = {
   conjunction: "border-white/30 bg-white/5 text-white/80",
@@ -127,6 +137,7 @@ export default async function CalendarPage() {
     .slice(0, 3);
 
   const grouped = groupByMonth(events);
+  const { fromIso, toIso } = defaultMonthRange();
 
   return (
     <>
@@ -134,7 +145,9 @@ export default async function CalendarPage() {
         title="Calendar"
         subtitle={`Upcoming transits to ${profile.fullName} · next 60 days · ${events.length} events`}
       />
-      <div className="p-6 space-y-5 max-w-3xl">
+      <div className="p-6 space-y-5 max-w-5xl">
+        <MonthGrid profileId={profile.id} initialFromIso={fromIso} initialToIso={toIso} />
+
         <p className="text-xs text-white/45">
           Aspect peaks predicted by linear extrapolation from current planet speeds. Retrograde stations may shift dates by a few days; the next pass after a station isn&apos;t included here.
         </p>
