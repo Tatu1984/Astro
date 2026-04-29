@@ -39,6 +39,15 @@ const EnvSchema = z.object({
   // Redis — Phase 3
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+
+  // Marketplace — Phase 3
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  DAILY_API_KEY: z.string().optional(),
+  DAILY_DOMAIN: z.string().optional(),
+  ASTROLOGER_PLATFORM_FEE_PCT: z.coerce.number().min(0).max(100).default(20),
+  CONSULT_BUFFER_MINUTES: z.coerce.number().min(0).default(5),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
