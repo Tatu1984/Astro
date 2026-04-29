@@ -239,3 +239,28 @@ shape adjustments — re-read this section then.
   — `GET /api/chat/sessions/:id` filters out the SYSTEM-role memory
   carrier message. Past-session themes simply make the assistant feel
   more continuous; no new fields on the messages payload.
+
+## Portal-completion additions (web today, mobile-ready)
+
+### User settings — `/api/user/settings`
+- Auth: cookie OR Bearer.
+- `GET` returns `{ user: { id, email, name, role, readingStyle, themePreference, notificationPrefs }, profiles, defaultProfileId }`.
+- `PATCH` body is a partial: `{ account?: { name?: string|null }, password?: { oldPassword, newPassword }, readingStyle?: "WESTERN"|"VEDIC", themePreference?: "light"|"dark"|"system", notificationPrefs?: { booking?, payout?, message?, kyc? } }`.
+- `POST /api/user/settings/sign-out-everywhere` revokes all sessions for the caller.
+
+### In-app notifications — `/api/notifications*`
+- `GET /api/notifications?unread=true&limit=25&offset=0` → `{ rows, total, unread, limit, offset }`.
+- `POST /api/notifications/:id/read`.
+- `POST /api/notifications/read-all`.
+- `GET /api/notifications/unread-count` → `{ count }`.
+- Notification rows have `{ id, kind, title, body, payload, readAt, createdAt }`. `payload.href` (when present) is the in-app destination.
+- Notification kinds: `BOOKING_CONFIRMED|BOOKING_REMINDER|BOOKING_CANCELLED|BOOKING_COMPLETED|PAYOUT_PROCESSED|PAYOUT_REJECTED|KYC_APPROVED|KYC_REJECTED|CHAT_MESSAGE|NEW_REVIEW|MODERATION_ACTION|SYSTEM`.
+
+### Chat tool-calls (additive on the existing SSE)
+- The chat stream now emits an additional event `tool_call` between deltas and `done`:
+  - `{ kind: "tool_call", name: "show_chart"|"show_compatibility"|"show_transit_today"|"show_predictions"|"navigate", args: object, href: string|null }`.
+- Order: zero or more `delta`, then optionally one `tool_call`, then exactly one `done` or `error`.
+- Mobile may render a single follow-up action button under the assistant message; tap to navigate to `href` (always a relative in-app path) or use `args` to drive a native handler.
+
+### AI locale adaptation (no API change)
+- The user's `readingStyle` (settable via `/api/user/settings`) is now applied transparently to horoscope, chat, report and compatibility prompts. Defaults to `VEDIC`. No new fields on responses; tone shifts.
