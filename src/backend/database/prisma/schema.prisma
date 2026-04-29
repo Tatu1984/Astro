@@ -79,6 +79,7 @@ model User {
   hiddenComments       Comment[]           @relation("CommentHiddenBy")
   kycReviews           KycDocument[]       @relation("KycReviewer")
   notifications        Notification[]      @relation("UserNotifications")
+  clientNotes          ClientNote[]        @relation("ClientNoteSubject")
 
   @@index([deletedAt])
   @@index([bannedUntil])
@@ -234,6 +235,8 @@ model AstrologerProfile {
   ledger             WalletLedger[]
   payouts            Payout[]
   kycDocuments       KycDocument[]
+  consultTemplates   ConsultTemplate[]
+  clientNotes        ClientNote[]
 
   @@index([status])
   @@index([onboardingStep])
@@ -881,6 +884,43 @@ model AuditLog {
   @@index([kind, createdAt])
   @@index([resource, resourceId, createdAt])
   @@index([createdAt])
+}
+
+// =========================
+// ASTROLOGER TOOLS: consult templates + client notes
+// =========================
+
+model ConsultTemplate {
+  id                  String            @id @default(cuid())
+  astrologerProfileId String
+  astrologerProfile   AstrologerProfile @relation(fields: [astrologerProfileId], references: [id], onDelete: Cascade)
+
+  title    String
+  body     String  @db.Text
+  isShared Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([astrologerProfileId])
+  @@index([isShared])
+}
+
+model ClientNote {
+  id                  String            @id @default(cuid())
+  astrologerProfileId String
+  astrologerProfile   AstrologerProfile @relation(fields: [astrologerProfileId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User              @relation("ClientNoteSubject", fields: [userId], references: [id], onDelete: Cascade)
+  bookingId           String?
+  content             String            @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([astrologerProfileId, userId])
+  @@index([astrologerProfileId, bookingId])
+  @@index([astrologerProfileId, createdAt])
 }
 
 // =========================

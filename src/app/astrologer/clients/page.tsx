@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getAuthedUser } from "@/backend/auth/getAuthedUser";
@@ -50,7 +51,15 @@ export default async function ClientsPage() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.user?.id ?? Math.random()} className="border-t border-[var(--color-border)]">
-                  <td className="px-4 py-2 text-white">{r.user?.name ?? "—"}</td>
+                  <td className="px-4 py-2 text-white">
+                    {r.user ? (
+                      <Link href={`/astrologer/clients/${r.user.id}`} className="hover:underline">
+                        {r.user.name ?? "—"}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-white/70">{r.user?.email ?? "—"}</td>
                   <td className="px-4 py-2 text-right text-white/85">{r.total}</td>
                   <td className="px-4 py-2 text-white/55">{r.lastSession ? r.lastSession.toLocaleDateString() : "—"}</td>

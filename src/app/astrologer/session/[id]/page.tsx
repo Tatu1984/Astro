@@ -7,6 +7,7 @@ import { Button } from "@/frontend/components/ui/Button";
 import { Card } from "@/frontend/components/ui/Card";
 
 type StartResp = { roomUrl: string; roomName: string; token: string };
+type Template = { id: string; title: string; body: string };
 
 export default function AstrologerSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -15,6 +16,7 @@ export default function AstrologerSessionPage({ params }: { params: Promise<{ id
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
+  const [templates, setTemplates] = useState<Template[]>([]);
 
   async function start() {
     setLoading(true);
@@ -53,6 +55,27 @@ export default function AstrologerSessionPage({ params }: { params: Promise<{ id
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/astrologer/templates", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { own: Template[]; shared: Template[] } | null) => {
+        if (cancelled || !data) return;
+        setTemplates([...(data.own ?? []), ...(data.shared ?? [])]);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function insertTemplate(templateId: string) {
+    if (!templateId) return;
+    const t = templates.find((x) => x.id === templateId);
+    if (!t) return;
+    setNotes((prev) => (prev ? `${t.body}\n\n${prev}` : t.body));
+  }
+
   const isStub = session?.roomUrl?.startsWith("stub://");
   const iframeSrc = session && !isStub
     ? `${session.roomUrl}?t=${encodeURIComponent(session.token)}`
@@ -83,6 +106,23 @@ export default function AstrologerSessionPage({ params }: { params: Promise<{ id
         </Card>
         <Card className="!p-4 flex flex-col gap-3">
           <h3 className="font-semibold text-[var(--color-brand-gold)]">Session notes</h3>
+          {templates.length > 0 ? (
+            <select
+              value=""
+              onChange={(e) => insertTemplate(e.target.value)}
+              disabled={completed}
+              className="w-full rounded-md border border-[var(--color-border)] bg-white/5 px-3 py-2 text-xs text-white"
+            >
+              <option value="" className="bg-[#1a1530]">
+                Insert template…
+              </option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id} className="bg-[#1a1530]">
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}

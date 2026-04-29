@@ -541,6 +541,32 @@ CREATE TABLE "AuditLog" (
 );
 
 -- CreateTable
+CREATE TABLE "ConsultTemplate" (
+    "id" TEXT NOT NULL,
+    "astrologerProfileId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "body" TEXT NOT NULL,
+    "isShared" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ConsultTemplate_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ClientNote" (
+    "id" TEXT NOT NULL,
+    "astrologerProfileId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "bookingId" TEXT,
+    "content" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ClientNote_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Notification" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -799,6 +825,21 @@ CREATE INDEX "AuditLog_resource_resourceId_createdAt_idx" ON "AuditLog"("resourc
 CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
 
 -- CreateIndex
+CREATE INDEX "ConsultTemplate_astrologerProfileId_idx" ON "ConsultTemplate"("astrologerProfileId");
+
+-- CreateIndex
+CREATE INDEX "ConsultTemplate_isShared_idx" ON "ConsultTemplate"("isShared");
+
+-- CreateIndex
+CREATE INDEX "ClientNote_astrologerProfileId_userId_idx" ON "ClientNote"("astrologerProfileId", "userId");
+
+-- CreateIndex
+CREATE INDEX "ClientNote_astrologerProfileId_bookingId_idx" ON "ClientNote"("astrologerProfileId", "bookingId");
+
+-- CreateIndex
+CREATE INDEX "ClientNote_astrologerProfileId_createdAt_idx" ON "ClientNote"("astrologerProfileId", "createdAt");
+
+-- CreateIndex
 CREATE INDEX "Notification_userId_readAt_idx" ON "Notification"("userId", "readAt");
 
 -- CreateIndex
@@ -944,6 +985,15 @@ ALTER TABLE "ModerationAction" ADD CONSTRAINT "ModerationAction_moderatorId_fkey
 
 -- AddForeignKey
 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ConsultTemplate" ADD CONSTRAINT "ConsultTemplate_astrologerProfileId_fkey" FOREIGN KEY ("astrologerProfileId") REFERENCES "AstrologerProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ClientNote" ADD CONSTRAINT "ClientNote_astrologerProfileId_fkey" FOREIGN KEY ("astrologerProfileId") REFERENCES "AstrologerProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ClientNote" ADD CONSTRAINT "ClientNote_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
