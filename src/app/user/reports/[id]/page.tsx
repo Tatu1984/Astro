@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { getReport, REPORT_KIND_TITLES } from "@/backend/services/report.service";
 import { TopBar } from "@/frontend/components/portal/TopBar";
 
+import { DownloadPdfButton } from "./download-pdf-button";
 import { ReportView } from "./report-view";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export default async function ReportDetail({
       <TopBar
         title={report.title}
         subtitle={`${REPORT_KIND_TITLES[report.kind]} · ${report.llmProvider ?? "—"} · ${report.llmModel ?? "—"}`}
+        right={<DownloadPdfButton reportId={report.id} />}
       />
       <div className="p-6 space-y-4 max-w-5xl">
         <Link
@@ -44,7 +46,6 @@ export default async function ReportDetail({
 
         <p className="text-[10px] text-white/35 text-center">
           Generated {report.createdAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · {report.inputTokens + report.outputTokens} tokens
-          {/* TODO: PDF export */}
         </p>
       </div>
     </>
