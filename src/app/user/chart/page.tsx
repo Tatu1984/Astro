@@ -15,6 +15,7 @@ import { Button } from "@/frontend/components/ui/Button";
 import { Card } from "@/frontend/components/ui/Card";
 import type { VedicResponse } from "@/shared/types/chart";
 
+import { ChartAtAGlance } from "./chart-at-a-glance";
 import { ChartPdfButton } from "./chart-pdf-button";
 import { ProfileSwitcher } from "./profile-switcher";
 
@@ -64,26 +65,28 @@ export default async function ChartWorkspace({
   let chartRowId: string | null = null;
   let chartError: string | null = null;
   let vedic: VedicResponse | null = null;
+  let vedicError: string | null = null;
   try {
-    const [natal, vedicResult] = await Promise.all([
-      resolveNatal({
-        userId: session.user.id,
-        profileId: active.id,
-        request: {
-          birth_datetime_utc: active.birthDate.toISOString(),
-          latitude: Number(active.latitude),
-          longitude: Number(active.longitude),
-          house_system: "PLACIDUS",
-          system: "BOTH",
-        },
-      }),
-      resolveVedic({ userId: session.user.id, profileId: active.id }).catch(() => null),
-    ]);
+    const natal = await resolveNatal({
+      userId: session.user.id,
+      profileId: active.id,
+      request: {
+        birth_datetime_utc: active.birthDate.toISOString(),
+        latitude: Number(active.latitude),
+        longitude: Number(active.longitude),
+        house_system: "PLACIDUS",
+        system: "BOTH",
+      },
+    });
     chart = natal.chart;
     chartRowId = natal.row.id;
-    vedic = vedicResult;
   } catch (err) {
     chartError = err instanceof Error ? err.message : String(err);
+  }
+  try {
+    vedic = await resolveVedic({ userId: session.user.id, profileId: active.id });
+  } catch (err) {
+    vedicError = err instanceof Error ? err.message : String(err);
   }
 
   const ascSign = chart ? signFor(chart.ascendant_deg) : "—";
@@ -119,7 +122,10 @@ export default async function ChartWorkspace({
           </div>
         ) : null}
 
-        {/* Vedic panel — present only when sidereal compute succeeded */}
+        {/* Hero summary — always renders when Western chart loaded; augments with Vedic when available */}
+        {chart ? <ChartAtAGlance chart={chart} vedic={vedic} vedicError={vedicError} /> : null}
+
+        {/* Detailed Vedic panel below — full nakshatra/dasha/divisional table */}
         {vedic ? <VedicPanel vedic={vedic} /> : null}
 
         <div className="grid lg:grid-cols-[1fr_360px] gap-6">
