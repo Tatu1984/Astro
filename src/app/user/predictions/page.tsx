@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/backend/database/client";
 import {
-  resolveHoroscope,
+  lookupCachedHoroscope,
   type HoroscopeDisplayFact,
   type HoroscopePayload,
   type ResolveHoroscopeKind,
@@ -13,6 +13,7 @@ import { TopBar } from "@/frontend/components/portal/TopBar";
 import { Card } from "@/frontend/components/ui/Card";
 
 import { PredictionBody } from "./prediction-body";
+import { StreamingPrediction } from "./streaming-prediction";
 
 const PRIMARY_TABS: Array<{ kind: ResolveHoroscopeKind; label: string }> = [
   { kind: "DAILY", label: "Daily" },
@@ -65,21 +66,24 @@ export default async function Page({
   let periodEnd: Date | null = null;
   let displayFacts: HoroscopeDisplayFact[] = [];
   let errorMsg: string | null = null;
+  let needsStream = false;
 
   if (profile) {
     try {
-      const result = await resolveHoroscope({
+      const cached = await lookupCachedHoroscope({
         userId: session.user.id,
         profileId: profile.id,
         kind: activeKind,
       });
-      payload = result.payload;
-      provider = `${result.prediction.llmProvider} · ${result.prediction.llmModel}${
-        result.cached ? " · cached" : ""
-      }`;
-      periodStart = result.prediction.periodStart;
-      periodEnd = result.prediction.periodEnd;
-      displayFacts = result.displayFacts;
+      if (cached) {
+        payload = cached.payload;
+        provider = `${cached.prediction.llmProvider} · ${cached.prediction.llmModel} · cached`;
+        periodStart = cached.prediction.periodStart;
+        periodEnd = cached.prediction.periodEnd;
+        displayFacts = cached.displayFacts;
+      } else {
+        needsStream = true;
+      }
     } catch (err) {
       errorMsg = err instanceof Error ? err.message : String(err);
     }
@@ -142,6 +146,12 @@ export default async function Page({
             </h3>
             <p className="text-white/70 text-sm">{errorMsg}</p>
           </Card>
+        ) : needsStream && profile ? (
+          <StreamingPrediction
+            kind={activeKind}
+            profileId={profile.id}
+            rangeLabelFor={(s, e) => KIND_COPY[activeKind].range(s, e)}
+          />
         ) : !payload ? (
           <Card>
             <p className="text-white/60 text-sm">Computing your reading…</p>

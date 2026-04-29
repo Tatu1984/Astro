@@ -4,7 +4,7 @@ import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import { prisma } from "@/backend/database/client";
 import { resolveNatal } from "@/backend/services/chart.service";
 import { scoreBirthData } from "@/backend/services/llm/birthDataQuality";
-import { callLlm } from "@/backend/services/llm/router";
+import { callLlm, callLlmStream } from "@/backend/services/llm/router";
 import { appendDisclaimer, flagUnsafeOutput, softenFlaggedOutput } from "@/backend/services/llm/safety";
 import {
   buildHoroscopePrompt,
@@ -195,6 +195,42 @@ function buildDisplayFacts(facts: FactsLike): HoroscopeDisplayFact[] {
   return out;
 }
 
+/**
+ * Cache-only fast path. Returns the existing Prediction + payload if one
+ * exists for (user, profile, kind, period), or null. Used by the UI to
+ * decide between rendering immediately vs. opening a streaming request.
+ */
+export async function lookupCachedHoroscope(args: ResolveArgs): Promise<{
+  prediction: Prediction;
+  payload: HoroscopePayload;
+  displayFacts: HoroscopeDisplayFact[];
+} | null> {
+  const profile = await prisma.profile.findUnique({
+    where: { id: args.profileId },
+    select: { id: true, userId: true, timezone: true },
+  });
+  if (!profile || profile.userId !== args.userId) return null;
+  const forDate = args.forDate ?? new Date();
+  const { start: periodStart } = periodBoundsUtc(forDate, args.kind, profile.timezone);
+  const existing = await prisma.prediction.findUnique({
+    where: {
+      userId_profileId_kind_periodStart: {
+        userId: args.userId,
+        profileId: args.profileId,
+        kind: KIND_TO_PRISMA[args.kind],
+        periodStart,
+      },
+    },
+  });
+  if (!existing) return null;
+  const cachedFacts = (existing.facts ?? null) as FactsLike | null;
+  return {
+    prediction: existing,
+    payload: existing.payload as unknown as HoroscopePayload,
+    displayFacts: cachedFacts ? buildDisplayFacts(cachedFacts) : [],
+  };
+}
+
 export async function resolveHoroscope(args: ResolveArgs): Promise<{
   cached: boolean;
   prediction: Prediction;
@@ -336,3 +372,199 @@ export const resolveDailyHoroscope = (args: { userId: string; profileId: string;
   resolveHoroscope({ ...args, kind: "DAILY" });
 
 export type DailyHoroscopePayload = HoroscopePayload;
+
+export type HoroscopeStreamEvent =
+  | { kind: "delta"; text: string }
+  | {
+      kind: "done";
+      cached: boolean;
+      payload: HoroscopePayload;
+      displayFacts: HoroscopeDisplayFact[];
+      provider: string | null;
+      model: string | null;
+      generatedAt: string;
+    }
+  | { kind: "error"; message: string };
+
+/**
+ * Streaming variant of resolveHoroscope. Yields a `done` event right away
+ * if the prediction is already cached. Otherwise streams `delta` events
+ * as the LLM emits tokens, then a `done` event with the parsed payload.
+ *
+ * Note: Gemini's JSON mode emits structured output incrementally; deltas
+ * are not human-readable until the buffer is parsed at `done` time.
+ */
+export async function* resolveHoroscopeStream(
+  args: ResolveArgs,
+): AsyncGenerator<HoroscopeStreamEvent, void, void> {
+  const profile = await prisma.profile.findUnique({
+    where: { id: args.profileId },
+    select: {
+      id: true,
+      userId: true,
+      fullName: true,
+      birthDate: true,
+      birthPlace: true,
+      latitude: true,
+      longitude: true,
+      timezone: true,
+      unknownTime: true,
+    },
+  });
+  if (!profile) {
+    yield { kind: "error", message: "profile not found" };
+    return;
+  }
+  if (profile.userId !== args.userId) {
+    yield { kind: "error", message: "forbidden" };
+    return;
+  }
+
+  const forDate = args.forDate ?? new Date();
+  const { start: periodStart, end: periodEnd } = periodBoundsUtc(forDate, args.kind, profile.timezone);
+
+  const existing = await prisma.prediction.findUnique({
+    where: {
+      userId_profileId_kind_periodStart: {
+        userId: args.userId,
+        profileId: args.profileId,
+        kind: KIND_TO_PRISMA[args.kind],
+        periodStart,
+      },
+    },
+  });
+  if (existing) {
+    const cachedFacts = (existing.facts ?? null) as FactsLike | null;
+    yield {
+      kind: "done",
+      cached: true,
+      payload: existing.payload as unknown as HoroscopePayload,
+      displayFacts: cachedFacts ? buildDisplayFacts(cachedFacts) : [],
+      provider: existing.llmProvider ?? null,
+      model: existing.llmModel ?? null,
+      generatedAt: existing.createdAt.toISOString(),
+    };
+    return;
+  }
+
+  const quality = scoreBirthData({
+    unknownTime: profile.unknownTime,
+    birthDate: profile.birthDate,
+    latitude: Number(profile.latitude),
+    longitude: Number(profile.longitude),
+    birthPlace: profile.birthPlace,
+    timezone: profile.timezone,
+  });
+
+  const { chart, row: chartRow } = await resolveNatal({
+    userId: args.userId,
+    profileId: args.profileId,
+    request: {
+      birth_datetime_utc: profile.birthDate.toISOString(),
+      latitude: Number(profile.latitude),
+      longitude: Number(profile.longitude),
+      house_system: "PLACIDUS",
+      system: "BOTH",
+    },
+  });
+
+  const { systemPrompt, userPrompt, facts } = buildHoroscopePrompt({
+    kind: args.kind,
+    fullName: profile.fullName,
+    birthDateUtc: profile.birthDate,
+    birthPlace: profile.birthPlace,
+    timezone: profile.timezone,
+    chart,
+    periodStart,
+    periodEnd,
+    quality,
+  });
+
+  const stream = callLlmStream({
+    route: `horoscopes.${args.kind.toLowerCase()}.stream`,
+    userId: args.userId,
+    systemPrompt,
+    userPrompt,
+    jsonOutput: true,
+    temperature: 0.7,
+    maxOutputTokens: args.kind === "YEARLY" ? 2048 : 1024,
+  });
+
+  let fullText = "";
+  let final: { provider: string; model: string; promptHash: string; inputTokens: number; outputTokens: number; costUsdMicro: number } | null = null;
+  try {
+    while (true) {
+      const next = await stream.next();
+      if (next.done) {
+        final = {
+          provider: next.value.provider,
+          model: next.value.model,
+          promptHash: next.value.promptHash,
+          inputTokens: next.value.inputTokens,
+          outputTokens: next.value.outputTokens,
+          costUsdMicro: next.value.costUsdMicro,
+        };
+        break;
+      }
+      fullText += next.value.text;
+      yield { kind: "delta", text: next.value.text };
+    }
+  } catch (err) {
+    yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+    return;
+  }
+  if (!final) {
+    yield { kind: "error", message: "stream ended without final usage" };
+    return;
+  }
+
+  let payload: HoroscopePayload;
+  try {
+    const raw = fullText.trim();
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    const json = start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
+    payload = JSON.parse(json) as HoroscopePayload;
+  } catch {
+    yield { kind: "error", message: `LLM returned non-JSON response: ${fullText.slice(0, 200)}` };
+    return;
+  }
+
+  const surface = `HOROSCOPE_${args.kind}` as const;
+  const flagged = flagUnsafeOutput(payload.body);
+  if (flagged.flagged) {
+    console.warn("[llm.safety] horoscope flagged", { surface, reasons: flagged.reasons, userId: args.userId });
+    payload = { ...payload, body: softenFlaggedOutput(payload.body) };
+  }
+  payload = { ...payload, body: appendDisclaimer(payload.body, surface) };
+
+  const prediction = await prisma.prediction.create({
+    data: {
+      userId: args.userId,
+      profileId: args.profileId,
+      chartId: chartRow.id,
+      kind: KIND_TO_PRISMA[args.kind],
+      periodStart,
+      periodEnd,
+      facts: facts as unknown as Prisma.InputJsonValue,
+      payload: payload as unknown as Prisma.InputJsonValue,
+      text: payload.body,
+      llmProvider: final.provider,
+      llmModel: final.model,
+      promptHash: final.promptHash,
+      inputTokens: final.inputTokens,
+      outputTokens: final.outputTokens,
+      costUsdMicro: final.costUsdMicro,
+    },
+  });
+
+  yield {
+    kind: "done",
+    cached: false,
+    payload,
+    displayFacts: buildDisplayFacts(facts as unknown as FactsLike),
+    provider: prediction.llmProvider,
+    model: prediction.llmModel,
+    generatedAt: prediction.createdAt.toISOString(),
+  };
+}
