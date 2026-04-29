@@ -31,6 +31,8 @@ function loadScript(): Promise<void> {
   return scriptPromise;
 }
 
+const DEFAULT_THEME = { color: "#7C5CFF" };
+
 export async function openRazorpayCheckout(
   options: RazorpayCheckoutOptions,
 ): Promise<RazorpayCheckoutResponse> {
@@ -38,6 +40,7 @@ export async function openRazorpayCheckout(
   if (!window.Razorpay) throw new Error("razorpay unavailable");
   return new Promise<RazorpayCheckoutResponse>((resolve, reject) => {
     const rzp = new window.Razorpay!({
+      theme: DEFAULT_THEME,
       ...options,
       handler: (response) => resolve(response),
       modal: { ondismiss: () => reject(new Error("payment cancelled")) },
@@ -45,3 +48,5 @@ export async function openRazorpayCheckout(
     rzp.open();
   });
 }
+
+export type { RazorpayCheckoutOptions, RazorpayCheckoutResponse };
