@@ -9,6 +9,100 @@ import { Card } from "@/frontend/components/ui/Card";
 type StartResp = { roomUrl: string; roomName: string; token: string };
 type Template = { id: string; title: string; body: string };
 
+function RecordingPanel({ bookingId }: { bookingId: string }) {
+  const [hasRecording, setHasRecording] = useState<boolean | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/consult/bookings/${bookingId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return setHasRecording(null);
+        setHasRecording(Boolean(data.booking?.consultSession?.recordingUrl));
+      })
+      .catch(() => setHasRecording(null));
+  }, [bookingId]);
+
+  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      const res = await fetch(`/api/astrologer/bookings/${bookingId}/recording`, {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "upload failed");
+      }
+      setHasRecording(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "upload failed");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  async function deleteRec() {
+    if (!confirm("Delete the uploaded recording?")) return;
+    const res = await fetch(`/api/astrologer/bookings/${bookingId}/recording`, { method: "DELETE" });
+    if (res.ok) setHasRecording(false);
+  }
+
+  async function watch() {
+    const res = await fetch(`/api/consult/bookings/${bookingId}/recording-url`);
+    if (!res.ok) return;
+    const { url } = (await res.json()) as { url: string };
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+      <h4 className="font-semibold text-[var(--color-brand-gold)] text-sm mb-2">Recording</h4>
+      <p className="text-xs text-white/55 mb-2">
+        Up to 500 MB. Accepted: MP4, WebM, MP3.
+      </p>
+      <div className="flex flex-wrap gap-2 items-center">
+        <label className="inline-flex items-center cursor-pointer rounded-md border border-[var(--color-border)] bg-white/5 px-3 h-7 text-xs text-white hover:bg-white/10">
+          <input
+            type="file"
+            accept="video/mp4,video/webm,audio/mpeg"
+            onChange={onUpload}
+            disabled={uploading}
+            className="hidden"
+          />
+          {uploading ? "Uploading…" : hasRecording ? "Replace" : "Upload"}
+        </label>
+        {hasRecording ? (
+          <>
+            <button
+              type="button"
+              onClick={watch}
+              className="rounded-md border border-[var(--color-border)] bg-white/5 px-3 h-7 text-xs text-white hover:bg-white/10"
+            >
+              Watch
+            </button>
+            <button
+              type="button"
+              onClick={deleteRec}
+              className="rounded-md border border-[var(--color-brand-rose)]/40 bg-[var(--color-brand-rose)]/10 px-3 h-7 text-xs text-[var(--color-brand-rose)]"
+            >
+              Delete
+            </button>
+          </>
+        ) : null}
+      </div>
+      {error ? <p className="mt-2 text-xs text-[var(--color-brand-rose)]">{error}</p> : null}
+    </div>
+  );
+}
+
 export default function AstrologerSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [session, setSession] = useState<StartResp | null>(null);
@@ -137,6 +231,7 @@ export default function AstrologerSessionPage({ params }: { params: Promise<{ id
               {loading ? "Completing…" : "Complete Session"}
             </Button>
           )}
+          <RecordingPanel bookingId={id} />
         </Card>
       </div>
     </>

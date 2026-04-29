@@ -15,6 +15,7 @@ type Booking = {
   service: { title: string; kind: string };
   astrologerProfile: { id: string; fullName: string };
   review: { id: string; rating: number; comment: string | null } | null;
+  consultSession?: { recordingUrl: string | null } | null;
 };
 
 type JoinResp = { roomUrl: string; roomName: string; token: string };
@@ -89,6 +90,19 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
   const canReview = booking.status === "COMPLETED" && !booking.review && !submitted;
   const canJoin = booking.status === "CONFIRMED" || booking.status === "IN_PROGRESS";
   const isStub = join?.roomUrl?.startsWith("stub://");
+  const hasRecording = booking.status === "COMPLETED" && Boolean(booking.consultSession?.recordingUrl);
+
+  async function watchRecording() {
+    setError(null);
+    try {
+      const res = await fetch(`/api/consult/bookings/${id}/recording-url`);
+      if (!res.ok) throw new Error((await res.json()).error ?? "no recording");
+      const { url } = (await res.json()) as { url: string };
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "no recording");
+    }
+  }
 
   return (
     <>
@@ -109,6 +123,11 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
             ) : null}
             {canCancel ? (
               <Button variant="destructive" onClick={cancel}>Cancel</Button>
+            ) : null}
+            {hasRecording ? (
+              <Button variant="ghost" onClick={watchRecording}>
+                Watch recording
+              </Button>
             ) : null}
           </div>
         </Card>
