@@ -1,6 +1,12 @@
 import type { AiChatMessage, AiChatSession } from "@prisma/client";
 
 import { prisma } from "@/backend/database/client";
+import {
+  buildMemoryBlock,
+  getRecentSessionSummaries,
+  SESSION_MEMORY_PREFIX,
+  summarizeIdleSessions,
+} from "@/backend/services/chat-memory.service";
 import { resolveNatal } from "@/backend/services/chart.service";
 import { callLlm, callLlmStream } from "@/backend/services/llm/router";
 
@@ -49,7 +55,12 @@ export async function getSessionWithMessages(userId: string, sessionId: string) 
   });
   if (!session) throw new ChatError(404, "session not found");
   if (session.userId !== userId) throw new ChatError(403, "forbidden");
-  return session;
+  // SYSTEM-role memory carriers are infrastructure, not part of the
+  // user-visible transcript.
+  return {
+    ...session,
+    messages: session.messages.filter((m) => m.role !== "SYSTEM"),
+  };
 }
 
 export async function startSession(userId: string): Promise<AiChatSession> {
@@ -60,13 +71,36 @@ export async function startSession(userId: string): Promise<AiChatSession> {
   if (!profile) {
     throw new ChatError(400, "add a birth profile before starting a chat");
   }
-  return prisma.aiChatSession.create({
+
+  // Best-effort: summarise older idle sessions so we can inject themes
+  // into the new one. Failures here must not block session creation.
+  try {
+    await summarizeIdleSessions(userId);
+  } catch (err) {
+    console.warn("[chat] summarizeIdleSessions error", err);
+  }
+
+  const summaries = await getRecentSessionSummaries(userId, profile.id, 5).catch(() => [] as string[]);
+
+  const created = await prisma.aiChatSession.create({
     data: {
       userId,
       profileId: profile.id,
       title: null,
     },
   });
+
+  if (summaries.length > 0) {
+    await prisma.aiChatMessage.create({
+      data: {
+        sessionId: created.id,
+        role: "SYSTEM",
+        content: `${SESSION_MEMORY_PREFIX}${JSON.stringify(summaries)}`,
+      },
+    });
+  }
+
+  return created;
 }
 
 export async function deleteSession(userId: string, sessionId: string) {
@@ -147,7 +181,27 @@ ${JSON.stringify(
   2,
 )}`;
 
-  const recentTurns = session.messages.slice(-MAX_HISTORY_TURNS);
+  // Memory carriers (SYSTEM role with sentinel prefix) are not user
+  // turns — pull their content out for the system prompt and exclude
+  // them from the visible conversation history.
+  const memoryCarrier = session.messages.find(
+    (m) => m.role === "SYSTEM" && m.content.startsWith(SESSION_MEMORY_PREFIX),
+  );
+  let memoryBlock = "";
+  if (memoryCarrier) {
+    try {
+      const parsed = JSON.parse(memoryCarrier.content.slice(SESSION_MEMORY_PREFIX.length)) as unknown;
+      if (Array.isArray(parsed)) {
+        memoryBlock = buildMemoryBlock(parsed.filter((s): s is string => typeof s === "string"));
+      }
+    } catch {
+      // ignore malformed memory carrier
+    }
+  }
+  const systemPrompt = memoryBlock ? `${SYSTEM_PROMPT}\n\n${memoryBlock}` : SYSTEM_PROMPT;
+
+  const conversational = session.messages.filter((m) => m.role !== "SYSTEM");
+  const recentTurns = conversational.slice(-MAX_HISTORY_TURNS);
   const userPrompt = [
     "[chart context]",
     chartContext,
@@ -159,7 +213,7 @@ ${JSON.stringify(
     `ASTROLOGER:`,
   ].join("\n");
 
-  return { systemPrompt: SYSTEM_PROMPT, userPrompt, sessionTitle: session.title, trimmedContent: trimmed };
+  return { systemPrompt, userPrompt, sessionTitle: session.title, trimmedContent: trimmed };
 }
 
 interface PersistArgs {
