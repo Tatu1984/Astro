@@ -163,3 +163,28 @@ Note: there is no GET on this exact path; use the session-by-id endpoint above t
 `{ error: string, details?: object, detail?: string }`. Status codes follow the
 HTTP semantics noted per endpoint. 401 always means "auth missing or
 invalid"; mobile should refresh-then-retry once via `/api/auth/refresh`.
+
+## Phase 3 (web only — mobile v1 does NOT include consult)
+
+The Phase 3 marketplace surface is intentionally web-only for mobile v1. The
+following routes are out of scope for the React Native client and should not
+be wired up in mobile until a dedicated mobile-consult phase ships:
+
+- `/api/consult/*` — astrologer directory, public profile, user bookings,
+  join, cancel, review.
+- `/api/astrologer/*` — services, schedule, schedule exceptions, bookings,
+  start/complete, earnings, reviews, payouts. (Astrologers operate from web.)
+- `/api/admin/payouts*` and `/api/admin/bookings` — admin-only.
+- `/api/payments/razorpay/*` — order, verify, webhook (web Checkout flow).
+
+Reasons:
+
+- Razorpay Checkout is a web SDK; mobile would need the React Native SDK and
+  separate Razorpay Standard Checkout integration work.
+- Daily.co prebuilt iframe is browser-first; native mobile would use the
+  Daily React Native SDK, which is a separate integration.
+- Astrologer console workflows (queue, schedule, earnings) are too dense for
+  mobile v1 and not part of the user-facing app.
+
+When mobile-consult lands, expect new mobile-specific endpoints and/or
+shape adjustments — re-read this section then.
