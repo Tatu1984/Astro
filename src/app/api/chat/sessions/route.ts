@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { ChatError, listChatSessions, startSession } from "@/backend/services/chat.service";
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const sessions = await listChatSessions(session.user.id);
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const sessions = await listChatSessions(me.userId);
   return NextResponse.json({ sessions });
 }
 
 export async function POST() {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
-    const created = await startSession(session.user.id);
+    const created = await startSession(me.userId);
     return NextResponse.json({ session: created }, { status: 201 });
   } catch (err) {
     if (err instanceof ChatError) {

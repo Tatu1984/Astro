@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { ProfileError, createProfile, listUserProfiles } from "@/backend/services/profile.service";
 import { CreateProfileSchema } from "@/backend/validators/profile.validator";
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const profiles = await listUserProfiles(session.user.id);
+  const profiles = await listUserProfiles(me.userId);
   return NextResponse.json({ profiles });
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   let body: unknown;
   try {
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const profile = await createProfile(parsed.data, session.user.id);
+    const profile = await createProfile(parsed.data, me.userId);
     return NextResponse.json({ profile }, { status: 201 });
   } catch (err) {
     if (err instanceof ProfileError) {

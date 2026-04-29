@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { ChatError, deleteSession, getSessionWithMessages } from "@/backend/services/chat.service";
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
 
   try {
-    const data = await getSessionWithMessages(session.user.id, id);
+    const data = await getSessionWithMessages(me.userId, id);
     return NextResponse.json({ session: data });
   } catch (err) {
     if (err instanceof ChatError) {
@@ -26,12 +26,12 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
 
   try {
-    await deleteSession(session.user.id, id);
+    await deleteSession(me.userId, id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof ChatError) {

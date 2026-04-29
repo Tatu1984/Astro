@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { ProfileError, softDeleteProfile } from "@/backend/services/profile.service";
 
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
   try {
-    const result = await softDeleteProfile(id, session.user.id);
+    const result = await softDeleteProfile(id, me.userId);
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof ProfileError) {

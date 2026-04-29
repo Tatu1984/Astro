@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { sendMessageStream } from "@/backend/services/chat.service";
 
 const BodySchema = z.object({
@@ -12,8 +12,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const me = await getAuthedUser();
+  if (!me) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -38,7 +38,7 @@ export async function POST(
   }
 
   const { id } = await params;
-  const userId = session.user.id;
+  const userId = me.userId;
   const content = parsed.data.content;
 
   const encoder = new TextEncoder();

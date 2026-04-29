@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { resolveNatal } from "@/backend/services/chart.service";
 import { resolveNowTransits, TransitError } from "@/backend/services/transit.service";
 import { prisma } from "@/backend/database/client";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const profileIdParam = req.nextUrl.searchParams.get("profileId");
   const profile = profileIdParam
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
         },
       })
     : await prisma.profile.findFirst({
-        where: { userId: session.user.id, deletedAt: null },
+        where: { userId: me.userId, deletedAt: null },
         orderBy: { createdAt: "asc" },
         select: {
           id: true, userId: true, birthDate: true, latitude: true, longitude: true,
@@ -26,11 +26,11 @@ export async function GET(req: NextRequest) {
       });
 
   if (!profile) return NextResponse.json({ error: "no profile available" }, { status: 404 });
-  if (profile.userId !== session.user.id) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (profile.userId !== me.userId) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   try {
     const { chart } = await resolveNatal({
-      userId: session.user.id,
+      userId: me.userId,
       profileId: profile.id,
       request: {
         birth_datetime_utc: profile.birthDate.toISOString(),

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import {
   CompatibilityError,
   deleteCompatibility,
@@ -11,11 +11,11 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
   try {
-    const c = await getCompatibility(session.user.id, id);
+    const c = await getCompatibility(me.userId, id);
     return NextResponse.json({ compatibility: c });
   } catch (err) {
     if (err instanceof CompatibilityError) {
@@ -29,11 +29,11 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
   try {
-    await deleteCompatibility(session.user.id, id);
+    await deleteCompatibility(me.userId, id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof CompatibilityError) {

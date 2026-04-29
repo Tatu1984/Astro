@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { ComputeError, resolveNatal } from "@/backend/services/chart.service";
 import { NatalRequestSchema } from "@/backend/validators/chart.validator";
 
@@ -10,8 +10,8 @@ const BodySchema = NatalRequestSchema.extend({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const me = await getAuthedUser();
+  if (!me) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { chart, cached } = await resolveNatal({
-      userId: session.user.id,
+      userId: me.userId,
       profileId: profile_id ?? null,
       request,
     });

@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { resolveVedic, VedicError } from "@/backend/services/vedic.service";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const profileId = req.nextUrl.searchParams.get("profileId");
   if (!profileId) return NextResponse.json({ error: "profileId required" }, { status: 400 });
 
   try {
-    const vedic = await resolveVedic({ userId: session.user.id, profileId });
+    const vedic = await resolveVedic({ userId: me.userId, profileId });
     return NextResponse.json(vedic);
   } catch (err) {
     if (err instanceof VedicError) {

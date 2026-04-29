@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import {
   CompatibilityError,
   listCompatibilities,
@@ -16,15 +16,15 @@ const PostBody = z.object({
 });
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const compatibilities = await listCompatibilities(session.user.id);
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const compatibilities = await listCompatibilities(me.userId);
   return NextResponse.json({ compatibilities });
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   let body: unknown;
   try {
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await resolveCompatibility({
-      userId: session.user.id,
+      userId: me.userId,
       profileAId: parsed.data.profileAId,
       profileBId: parsed.data.profileBId,
       kind: parsed.data.kind,

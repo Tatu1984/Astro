@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { GeocodeError, geocode, searchPlaces } from "@/backend/utils/geocode.util";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const me = await getAuthedUser();
+  if (!me) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { HoroscopeError, resolveHoroscope, type ResolveHoroscopeKind } from "@/backend/services/horoscope.service";
 import { LlmError } from "@/backend/services/llm/types";
 
@@ -10,8 +10,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ kind: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { kind: rawKind } = await params;
   const kind = rawKind.toUpperCase() as ResolveHoroscopeKind;
@@ -23,7 +23,7 @@ export async function GET(
   if (!profileId) return NextResponse.json({ error: "profileId required" }, { status: 400 });
 
   try {
-    const result = await resolveHoroscope({ userId: session.user.id, profileId, kind });
+    const result = await resolveHoroscope({ userId: me.userId, profileId, kind });
     return NextResponse.json({
       kind,
       cached: result.cached,

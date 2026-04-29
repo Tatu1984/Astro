@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { ChatError, sendMessage } from "@/backend/services/chat.service";
 import { LlmError } from "@/backend/services/llm/types";
 
@@ -13,8 +13,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   let body: unknown;
   try {
@@ -33,7 +33,7 @@ export async function POST(
   const { id } = await params;
   try {
     const result = await sendMessage({
-      userId: session.user.id,
+      userId: me.userId,
       sessionId: id,
       content: parsed.data.content,
     });

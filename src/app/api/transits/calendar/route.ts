@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { auth } from "@/auth";
+import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { resolveNatal } from "@/backend/services/chart.service";
 import { buildCalendar, TransitError } from "@/backend/services/transit.service";
 import { prisma } from "@/backend/database/client";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getAuthedUser();
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const days = Math.min(180, Math.max(7, Number(req.nextUrl.searchParams.get("days") ?? "60")));
 
   const profile = await prisma.profile.findFirst({
-    where: { userId: session.user.id, deletedAt: null },
+    where: { userId: me.userId, deletedAt: null },
     orderBy: { createdAt: "asc" },
     select: { id: true, birthDate: true, latitude: true, longitude: true },
   });
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const { chart } = await resolveNatal({
-      userId: session.user.id,
+      userId: me.userId,
       profileId: profile.id,
       request: {
         birth_datetime_utc: profile.birthDate.toISOString(),
