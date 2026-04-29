@@ -36,6 +36,17 @@ const EnvSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET: z.string().optional(),
 
+  // S3-compatible storage (Cloudflare R2 by default) — Phase 4.
+  // S3_ENDPOINT is the full URL e.g. https://<account>.r2.cloudflarestorage.com
+  // S3_REGION defaults to "auto" for R2.
+  // S3_PUBLIC_BASE_URL is optional — only set for public buckets.
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().default("auto"),
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_PUBLIC_BASE_URL: z.string().url().optional(),
+
   // Redis — Phase 3
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),

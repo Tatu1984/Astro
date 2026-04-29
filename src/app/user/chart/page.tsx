@@ -14,6 +14,7 @@ import { Button } from "@/frontend/components/ui/Button";
 import { Card } from "@/frontend/components/ui/Card";
 import type { VedicResponse } from "@/shared/types/chart";
 
+import { ChartPdfButton } from "./chart-pdf-button";
 import { ProfileSwitcher } from "./profile-switcher";
 
 function fmtPlace(birthPlace: string) {
@@ -58,6 +59,7 @@ export default async function ChartWorkspace({
   const active = profiles.find((p) => p.id === params.profile) ?? profiles[0];
 
   let chart: Awaited<ReturnType<typeof resolveNatal>>["chart"] | null = null;
+  let chartRowId: string | null = null;
   let chartError: string | null = null;
   let vedic: VedicResponse | null = null;
   try {
@@ -76,6 +78,7 @@ export default async function ChartWorkspace({
       resolveVedic({ userId: session.user.id, profileId: active.id }).catch(() => null),
     ]);
     chart = natal.chart;
+    chartRowId = natal.row.id;
     vedic = vedicResult;
   } catch (err) {
     chartError = err instanceof Error ? err.message : String(err);
@@ -101,6 +104,7 @@ export default async function ChartWorkspace({
               profiles={profiles.map((p) => ({ id: p.id, fullName: p.fullName }))}
               activeId={active.id}
             />
+            {chartRowId ? <ChartPdfButton chartId={chartRowId} /> : null}
           </div>
         }
         initials={initials}
