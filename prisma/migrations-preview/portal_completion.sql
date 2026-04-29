@@ -73,6 +73,9 @@ CREATE TYPE "ModerationKind" AS ENUM ('HIDE_POST', 'DELETE_POST', 'HIDE_COMMENT'
 -- CreateEnum
 CREATE TYPE "ModerationTargetType" AS ENUM ('POST', 'COMMENT', 'USER');
 
+-- CreateEnum
+CREATE TYPE "NotificationKind" AS ENUM ('BOOKING_CONFIRMED', 'BOOKING_REMINDER', 'BOOKING_CANCELLED', 'BOOKING_COMPLETED', 'PAYOUT_PROCESSED', 'PAYOUT_REJECTED', 'KYC_APPROVED', 'KYC_REJECTED', 'CHAT_MESSAGE', 'NEW_REVIEW', 'MODERATION_ACTION', 'SYSTEM');
+
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
@@ -538,6 +541,20 @@ CREATE TABLE "AuditLog" (
 );
 
 -- CreateTable
+CREATE TABLE "Notification" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "kind" "NotificationKind" NOT NULL,
+    "title" TEXT NOT NULL,
+    "body" TEXT,
+    "payload" JSONB,
+    "readAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Notification_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "FeatureFlag" (
     "id" TEXT NOT NULL,
     "key" TEXT NOT NULL,
@@ -782,6 +799,12 @@ CREATE INDEX "AuditLog_resource_resourceId_createdAt_idx" ON "AuditLog"("resourc
 CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
 
 -- CreateIndex
+CREATE INDEX "Notification_userId_readAt_idx" ON "Notification"("userId", "readAt");
+
+-- CreateIndex
+CREATE INDEX "Notification_userId_createdAt_idx" ON "Notification"("userId", "createdAt");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "FeatureFlag_key_key" ON "FeatureFlag"("key");
 
 -- CreateIndex
@@ -921,3 +944,6 @@ ALTER TABLE "ModerationAction" ADD CONSTRAINT "ModerationAction_moderatorId_fkey
 
 -- AddForeignKey
 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

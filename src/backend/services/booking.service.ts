@@ -2,6 +2,7 @@ import type { BookingStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/backend/database/client";
 import { env } from "@/config/env";
+import { notify } from "@/backend/services/notification.service";
 
 export class BookingError extends Error {
   constructor(public status: number, message: string) {
@@ -170,7 +171,79 @@ export async function transitionStatus(
   const data: Prisma.BookingUpdateInput = { status: next };
   if (next === "COMPLETED") data.completedAt = new Date();
   if (next === "CANCELLED") data.cancelledAt = new Date();
-  return tx.booking.update({ where: { id }, data });
+  const updated = await tx.booking.update({ where: { id }, data });
+
+  // Fire-and-forget: only when running outside a transaction, since tx
+  // clients may not have completed by the time the notification writes
+  // and we don't want a notify failure to roll back booking state.
+  if (tx === prisma) {
+    void emitBookingNotifications(updated.id, next).catch((err) =>
+      console.warn("[booking.notify] failed", err),
+    );
+  }
+  return updated;
+}
+
+async function emitBookingNotifications(bookingId: string, next: BookingStatus) {
+  const b = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: {
+      id: true,
+      userId: true,
+      scheduledAt: true,
+      astrologerProfile: { select: { userId: true, fullName: true } },
+      service: { select: { title: true } },
+      user: { select: { name: true } },
+    },
+  });
+  if (!b) return;
+  const astrologerUserId = b.astrologerProfile.userId;
+  const userHref = `/user/consult/bookings/${b.id}`;
+  const astroHref = `/astrologer/queue`;
+
+  if (next === "CONFIRMED") {
+    await Promise.all([
+      notify({
+        userId: b.userId,
+        kind: "BOOKING_CONFIRMED",
+        title: `Booking confirmed with ${b.astrologerProfile.fullName}`,
+        body: `Your ${b.service.title} session is set for ${b.scheduledAt.toUTCString()}.`,
+        payload: { href: userHref, bookingId: b.id },
+      }),
+      notify({
+        userId: astrologerUserId,
+        kind: "BOOKING_CONFIRMED",
+        title: `New booking confirmed`,
+        body: `${b.user.name ?? "A client"} booked ${b.service.title}.`,
+        payload: { href: astroHref, bookingId: b.id },
+      }),
+    ]);
+  } else if (next === "COMPLETED") {
+    await notify({
+      userId: b.userId,
+      kind: "BOOKING_COMPLETED",
+      title: "How was your session?",
+      body: `Leave a review for ${b.astrologerProfile.fullName}.`,
+      payload: { href: userHref, bookingId: b.id },
+    });
+  } else if (next === "CANCELLED") {
+    await Promise.all([
+      notify({
+        userId: b.userId,
+        kind: "BOOKING_CANCELLED",
+        title: "Booking cancelled",
+        body: `Your session with ${b.astrologerProfile.fullName} was cancelled.`,
+        payload: { href: userHref, bookingId: b.id },
+      }),
+      notify({
+        userId: astrologerUserId,
+        kind: "BOOKING_CANCELLED",
+        title: "Booking cancelled",
+        body: `Session with ${b.user.name ?? "client"} was cancelled.`,
+        payload: { href: astroHref, bookingId: b.id },
+      }),
+    ]);
+  }
 }
 
 export async function cancelBooking(id: string, requesterUserId: string, isAdmin = false) {

@@ -1,4 +1,5 @@
 import { Avatar } from "@/frontend/components/ui/Avatar";
+import { NotificationBell } from "@/frontend/components/nav/NotificationBell";
 import { SignOutButton } from "@/frontend/components/portal/SignOutButton";
 import { cn } from "@/frontend/utils/cn";
 
@@ -36,6 +37,7 @@ export function TopBar({
       </div>
       <div className="flex items-center gap-3">
         {right}
+        <NotificationBell light={light} />
         <SignOutButton light={light} />
         <Avatar initials={initials} size={32} />
       </div>

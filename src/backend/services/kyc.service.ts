@@ -1,6 +1,7 @@
 import type { KycDocStatus, KycDocumentKind, Prisma } from "@prisma/client";
 
 import { prisma } from "@/backend/database/client";
+import { notify } from "@/backend/services/notification.service";
 import {
   deleteObject,
   getSignedUrl,
@@ -292,12 +293,12 @@ interface DecisionInput {
 export async function decideAstrologer(input: DecisionInput) {
   const profile = await prisma.astrologerProfile.findUnique({
     where: { id: input.astrologerProfileId },
-    select: { id: true, onboardingStep: true, status: true },
+    select: { id: true, userId: true, onboardingStep: true, status: true },
   });
   if (!profile) throw new KycError(404, "astrologer profile not found");
 
   if (input.decision === "APPROVE_ALL") {
-    return prisma.astrologerProfile.update({
+    const updated = await prisma.astrologerProfile.update({
       where: { id: profile.id },
       data: {
         status: "ACTIVE",
@@ -305,8 +306,16 @@ export async function decideAstrologer(input: DecisionInput) {
       },
       select: { id: true, status: true, onboardingStep: true },
     });
+    void notify({
+      userId: profile.userId,
+      kind: "KYC_APPROVED",
+      title: "KYC approved",
+      body: "Your astrologer profile is approved — you can start accepting bookings.",
+      payload: { href: "/astrologer" },
+    });
+    return updated;
   }
-  return prisma.astrologerProfile.update({
+  const updated = await prisma.astrologerProfile.update({
     where: { id: profile.id },
     data: {
       status: "SUSPENDED",
@@ -314,4 +323,12 @@ export async function decideAstrologer(input: DecisionInput) {
     },
     select: { id: true, status: true, onboardingStep: true },
   });
+  void notify({
+    userId: profile.userId,
+    kind: "KYC_REJECTED",
+    title: "KYC rejected",
+    body: input.note ?? "Your KYC submission was not approved. Please re-upload corrected documents.",
+    payload: { href: "/astrologer/onboarding" },
+  });
+  return updated;
 }

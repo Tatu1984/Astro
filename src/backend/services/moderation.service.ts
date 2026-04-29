@@ -2,6 +2,7 @@ import type { ModerationKind, Prisma } from "@prisma/client";
 
 import { prisma } from "@/backend/database/client";
 import { writeAuditTx } from "@/backend/services/audit.service";
+import { notify } from "@/backend/services/notification.service";
 
 export class ModerationError extends Error {
   constructor(public status: number, message: string) {
@@ -224,6 +225,13 @@ export async function banUser(
       moderatorId,
       reason,
       expiresAt,
+    });
+    void notify({
+      userId,
+      kind: "MODERATION_ACTION",
+      title: isPerm ? "Your account has been banned" : "Your account is temporarily restricted",
+      body: reason ?? "Contact support if you believe this is in error.",
+      payload: { kind, expiresAt: expiresAt.toISOString() },
     });
     return { ok: true, bannedUntil: expiresAt.toISOString() };
   });

@@ -1,4 +1,5 @@
 import { prisma } from "@/backend/database/client";
+import { notify } from "@/backend/services/notification.service";
 import * as walletService from "@/backend/services/wallet.service";
 
 export class PayoutError extends Error {
@@ -87,7 +88,7 @@ export async function markPayoutCompleted(payoutId: string, razorpayPayoutId?: s
   if (payout.status !== "PROCESSING" && payout.status !== "APPROVED") {
     throw new PayoutError(400, `cannot mark complete from ${payout.status}`);
   }
-  return prisma.payout.update({
+  const updated = await prisma.payout.update({
     where: { id: payoutId },
     data: {
       status: "COMPLETED",
@@ -95,6 +96,10 @@ export async function markPayoutCompleted(payoutId: string, razorpayPayoutId?: s
       razorpayPayoutId,
     },
   });
+  void emitPayoutNotification(payout.astrologerProfileId, "COMPLETED", payout.amountInr).catch(
+    (err) => console.warn("[payout.notify] failed", err),
+  );
+  return updated;
 }
 
 export async function rejectPayout(payoutId: string, adminUserId: string) {
@@ -103,11 +108,44 @@ export async function rejectPayout(payoutId: string, adminUserId: string) {
   if (payout.status !== "REQUESTED") {
     throw new PayoutError(400, `cannot reject from status ${payout.status}`);
   }
-  return prisma.payout.update({
+  const updated = await prisma.payout.update({
     where: { id: payoutId },
     data: {
       status: "REJECTED",
       processedByUserId: adminUserId,
     },
   });
+  void emitPayoutNotification(payout.astrologerProfileId, "REJECTED", payout.amountInr).catch(
+    (err) => console.warn("[payout.notify] failed", err),
+  );
+  return updated;
+}
+
+async function emitPayoutNotification(
+  astrologerProfileId: string,
+  outcome: "COMPLETED" | "REJECTED",
+  amountInr: number,
+) {
+  const profile = await prisma.astrologerProfile.findUnique({
+    where: { id: astrologerProfileId },
+    select: { userId: true },
+  });
+  if (!profile) return;
+  if (outcome === "COMPLETED") {
+    await notify({
+      userId: profile.userId,
+      kind: "PAYOUT_PROCESSED",
+      title: "Payout processed",
+      body: `Your payout of ₹${amountInr.toLocaleString("en-IN")} was sent.`,
+      payload: { href: "/astrologer/earnings" },
+    });
+  } else {
+    await notify({
+      userId: profile.userId,
+      kind: "PAYOUT_REJECTED",
+      title: "Payout rejected",
+      body: `Your payout request of ₹${amountInr.toLocaleString("en-IN")} was rejected.`,
+      payload: { href: "/astrologer/earnings" },
+    });
+  }
 }

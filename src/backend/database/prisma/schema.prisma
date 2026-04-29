@@ -78,6 +78,7 @@ model User {
   hiddenPosts          Post[]              @relation("PostHiddenBy")
   hiddenComments       Comment[]           @relation("CommentHiddenBy")
   kycReviews           KycDocument[]       @relation("KycReviewer")
+  notifications        Notification[]      @relation("UserNotifications")
 
   @@index([deletedAt])
   @@index([bannedUntil])
@@ -880,6 +881,40 @@ model AuditLog {
   @@index([kind, createdAt])
   @@index([resource, resourceId, createdAt])
   @@index([createdAt])
+}
+
+// =========================
+// IN-APP NOTIFICATIONS
+// =========================
+
+enum NotificationKind {
+  BOOKING_CONFIRMED
+  BOOKING_REMINDER
+  BOOKING_CANCELLED
+  BOOKING_COMPLETED
+  PAYOUT_PROCESSED
+  PAYOUT_REJECTED
+  KYC_APPROVED
+  KYC_REJECTED
+  CHAT_MESSAGE
+  NEW_REVIEW
+  MODERATION_ACTION
+  SYSTEM
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  kind      NotificationKind
+  title     String
+  body      String?          @db.Text
+  payload   Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
 }
 
 // =========================
