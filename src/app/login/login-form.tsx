@@ -99,6 +99,12 @@ export function LoginForm() {
           Create one
         </Link>
       </p>
+      <p className="text-center text-xs text-[var(--color-ink-muted)]">
+        Are you an astrologer?{" "}
+        <Link href="/astrologer-signup" className="text-[var(--color-brand-gold)] hover:underline">
+          Sign up here →
+        </Link>
+      </p>
 
       {SHOW_DEV_HINTS ? (
         <div className="border-t border-[var(--color-border)] pt-5">
