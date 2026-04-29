@@ -31,36 +31,39 @@ enum AstroSystem {
 }
 
 model User {
-  id              String    @id @default(cuid())
-  email           String?   @unique
-  emailVerified   DateTime?
-  name            String?
-  image           String?
-  passwordHash    String?
-  phone           String?   @unique
-  role            UserRole  @default(USER)
-  systemPref      AstroSystem @default(BOTH)
-  locale          String    @default("en")
-  timezone        String?
-  bio             String?
-  referralCode    String    @unique @default(cuid())
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
+  id            String      @id @default(cuid())
+  email         String?     @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  passwordHash  String?
+  phone         String?     @unique
+  role          UserRole    @default(USER)
+  systemPref    AstroSystem @default(BOTH)
+  locale        String      @default("en")
+  timezone      String?
+  bio           String?
+  referralCode  String      @unique @default(cuid())
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
 
-  accounts          Account[]
-  sessions          Session[]
-  profiles          Profile[]
-  charts            Chart[]
-  predictions       Prediction[]        @relation("UserPredictions")
-  reports           Report[]            @relation("UserReports")
-  compatibilities   Compatibility[]     @relation("UserCompatibilities")
-  posts             Post[]              @relation("UserPosts")
-  comments          Comment[]           @relation("UserComments")
-  reactions         Reaction[]          @relation("UserReactions")
-  chatSessions      AiChatSession[]     @relation("UserChatSessions")
-  astrologerProfile AstrologerProfile?  @relation("AstrologerProfileUser")
+  accounts             Account[]
+  sessions             Session[]
+  profiles             Profile[]
+  charts               Chart[]
+  predictions          Prediction[]        @relation("UserPredictions")
+  reports              Report[]            @relation("UserReports")
+  compatibilities      Compatibility[]     @relation("UserCompatibilities")
+  posts                Post[]              @relation("UserPosts")
+  comments             Comment[]           @relation("UserComments")
+  reactions            Reaction[]          @relation("UserReactions")
+  chatSessions         AiChatSession[]     @relation("UserChatSessions")
+  astrologerProfile    AstrologerProfile?  @relation("AstrologerProfileUser")
   onboardedAstrologers AstrologerProfile[] @relation("AstrologerOnboardedBy")
+  bookings             Booking[]           @relation("UserBookings")
+  reviews              Review[]            @relation("UserReviews")
+  payoutsProcessed     Payout[]            @relation("PayoutProcessor")
 
   @@index([deletedAt])
 }
@@ -69,8 +72,8 @@ model User {
 model Account {
   id                String   @id @default(cuid())
   userId            String
-  type              String   // "oauth" | "email" | "credentials"
-  provider          String   // "google" | "apple" | "facebook" | "credentials"
+  type              String // "oauth" | "email" | "credentials"
+  provider          String // "google" | "apple" | "facebook" | "credentials"
   providerAccountId String
   refresh_token     String?  @db.Text
   access_token      String?  @db.Text
@@ -130,33 +133,34 @@ enum AstrologerStatus {
 // before any production data flows in. NeonDB encrypts at rest; the gap
 // is in-app log/query exposure.
 model AstrologerProfile {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation("AstrologerProfileUser", fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation("AstrologerProfileUser", fields: [userId], references: [id], onDelete: Cascade)
 
   // Personal
-  fullName        String
-  phone           String
-  alternatePhone  String?
+  fullName       String
+  phone          String
+  alternatePhone String?
 
   // Address
-  addressLine1    String
-  addressLine2    String?
-  city            String
-  state           String
-  postalCode      String
-  country         String   @default("IN")
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String
+  postalCode   String
+  country      String  @default("IN")
 
   // KYC
-  kycType         KycType
-  kycNumber       String   // sensitive — encrypt before prod
-  kycVerifiedAt   DateTime?
-  kycDocUrl       String?
+  kycType       KycType
+  kycNumber     String // sensitive — encrypt before prod
+  kycVerifiedAt DateTime?
+  kycDocUrl     String?
 
   // Professional
   qualifications  String?  @db.Text
   yearsExperience Int?
   specialties     String[]
+  languages       String[] @default([])
   bio             String?  @db.Text
 
   // Banking — sensitive — encrypt before prod
@@ -165,15 +169,240 @@ model AstrologerProfile {
   bankIfsc          String?
   upiId             String?
 
-  status          AstrologerStatus @default(PENDING)
-  onboardedById   String?
-  onboardedBy     User?    @relation("AstrologerOnboardedBy", fields: [onboardedById], references: [id], onDelete: SetNull)
+  status        AstrologerStatus @default(PENDING)
+  onboardedById String?
+  onboardedBy   User?            @relation("AstrologerOnboardedBy", fields: [onboardedById], references: [id], onDelete: SetNull)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  // Aggregated review stats — recomputed on each new review
+  averageRating Float @default(0)
+  ratingCount   Int   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  services           AstrologerService[]
+  schedules          AstrologerSchedule[]
+  scheduleExceptions ScheduleException[]
+  bookings           Booking[]
+  reviews            Review[]
+  ledger             WalletLedger[]
+  payouts            Payout[]
 
   @@index([status])
   @@index([onboardedById])
+}
+
+// =========================
+// MARKETPLACE: services, schedule, bookings, payments, payouts
+// =========================
+
+enum ServiceKind {
+  CHAT
+  VOICE
+  VIDEO
+  REPORT
+}
+
+model AstrologerService {
+  id                  String            @id @default(cuid())
+  astrologerProfileId String
+  astrologerProfile   AstrologerProfile @relation(fields: [astrologerProfileId], references: [id], onDelete: Cascade)
+
+  kind        ServiceKind
+  title       String
+  description String?     @db.Text
+  durationMin Int
+  priceInr    Int
+  isActive    Boolean     @default(true)
+
+  bookings Booking[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([astrologerProfileId])
+  @@index([astrologerProfileId, isActive])
+  @@index([kind])
+}
+
+model AstrologerSchedule {
+  id                  String            @id @default(cuid())
+  astrologerProfileId String
+  astrologerProfile   AstrologerProfile @relation(fields: [astrologerProfileId], references: [id], onDelete: Cascade)
+
+  weekday      Int // 0=Sunday .. 6=Saturday
+  startMinutes Int
+  endMinutes   Int
+  timezone     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([astrologerProfileId])
+  @@index([astrologerProfileId, weekday])
+}
+
+model ScheduleException {
+  id                  String            @id @default(cuid())
+  astrologerProfileId String
+  astrologerProfile   AstrologerProfile @relation(fields: [astrologerProfileId], references: [id], onDelete: Cascade)
+
+  date         DateTime @db.Date
+  isAvailable  Boolean
+  startMinutes Int?
+  endMinutes   Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([astrologerProfileId])
+  @@index([astrologerProfileId, date])
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  REFUNDED
+}
+
+model Booking {
+  id                  String        @id @default(cuid())
+  userId              String
+  astrologerProfileId String
+  serviceId           String
+  scheduledAt         DateTime
+  durationMin         Int
+  status              BookingStatus @default(PENDING_PAYMENT)
+
+  priceInr         Int
+  platformFeeInr   Int @default(0)
+  astrologerNetInr Int @default(0)
+
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+  cancelledAt DateTime?
+
+  user              User              @relation("UserBookings", fields: [userId], references: [id], onDelete: Cascade)
+  astrologerProfile AstrologerProfile @relation(fields: [astrologerProfileId], references: [id], onDelete: Cascade)
+  service           AstrologerService @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  consultSession    ConsultSession?
+  review            Review?
+
+  @@index([userId])
+  @@index([astrologerProfileId])
+  @@index([serviceId])
+  @@index([status])
+  @@index([astrologerProfileId, scheduledAt])
+  @@index([userId, scheduledAt])
+}
+
+model ConsultSession {
+  id        String  @id @default(cuid())
+  bookingId String  @unique
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  dailyRoomName        String
+  dailyRoomUrl         String
+  dailyTokenUser       String?
+  dailyTokenAstrologer String?
+
+  startedAt         DateTime?
+  endedAt           DateTime?
+  durationActualSec Int?
+  astrologerNotes   String?   @db.Text
+  recordingUrl      String?
+
+  createdAt DateTime @default(now())
+}
+
+model Review {
+  id        String  @id @default(cuid())
+  bookingId String  @unique
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("UserReviews", fields: [userId], references: [id], onDelete: Cascade)
+
+  astrologerProfileId String
+  astrologerProfile   AstrologerProfile @relation(fields: [astrologerProfileId], references: [id], onDelete: Cascade)
+
+  rating    Int
+  comment   String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([astrologerProfileId, createdAt])
+  @@index([userId])
+}
+
+enum LedgerKind {
+  EARNING
+  PAYOUT
+  ADJUSTMENT
+  REFUND
+}
+
+enum LedgerRefType {
+  BOOKING
+  PAYOUT
+  MANUAL
+}
+
+model WalletLedger {
+  id                  String            @id @default(cuid())
+  astrologerProfileId String
+  astrologerProfile   AstrologerProfile @relation(fields: [astrologerProfileId], references: [id], onDelete: Cascade)
+
+  kind            LedgerKind
+  amountInr       Int // signed (positive = credit, negative = debit)
+  refType         LedgerRefType
+  refId           String?
+  balanceAfterInr Int
+  description     String?
+  createdAt       DateTime      @default(now())
+
+  payouts Payout[] @relation("PayoutLedgerEntry")
+
+  @@index([astrologerProfileId, createdAt])
+  @@index([astrologerProfileId, kind])
+}
+
+enum PayoutStatus {
+  REQUESTED
+  APPROVED
+  PROCESSING
+  COMPLETED
+  FAILED
+  REJECTED
+}
+
+model Payout {
+  id                  String            @id @default(cuid())
+  astrologerProfileId String
+  astrologerProfile   AstrologerProfile @relation(fields: [astrologerProfileId], references: [id], onDelete: Cascade)
+
+  amountInr        Int
+  status           PayoutStatus @default(REQUESTED)
+  razorpayPayoutId String?
+
+  requestedAt       DateTime  @default(now())
+  completedAt       DateTime?
+  processedByUserId String?
+  processedBy       User?     @relation("PayoutProcessor", fields: [processedByUserId], references: [id], onDelete: SetNull)
+
+  ledgerEntryId String?
+  ledgerEntry   WalletLedger? @relation("PayoutLedgerEntry", fields: [ledgerEntryId], references: [id], onDelete: SetNull)
+
+  @@index([astrologerProfileId])
+  @@index([status])
+  @@index([astrologerProfileId, status])
+  @@index([processedByUserId])
 }
 
 // =========================
@@ -208,13 +437,13 @@ model Profile {
   updatedAt   DateTime    @updatedAt
   deletedAt   DateTime?
 
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   charts         Chart[]
   predictions    Prediction[]
   reports        Report[]
   chatSessions   AiChatSession[]
-  compatibilityA Compatibility[]  @relation("CompatibilityA")
-  compatibilityB Compatibility[]  @relation("CompatibilityB")
+  compatibilityA Compatibility[] @relation("CompatibilityA")
+  compatibilityB Compatibility[] @relation("CompatibilityB")
 
   @@index([userId])
   @@index([kind])
@@ -266,10 +495,10 @@ model Chart {
   reports      Report[]
   chatSessions AiChatSession[]
 
+  @@unique([userId, kind, system, houseSystem, inputHash])
   @@index([userId])
   @@index([profileId])
   @@index([kind, system])
-  @@unique([userId, kind, system, houseSystem, inputHash])
 }
 
 // =========================
@@ -294,7 +523,7 @@ model Prediction {
   periodStart  DateTime
   periodEnd    DateTime
   facts        Json
-  payload      Json           // structured LLM output (headline, body, domains, etc.)
+  payload      Json // structured LLM output (headline, body, domains, etc.)
   text         String         @db.Text
   llmProvider  String
   llmModel     String
@@ -308,9 +537,9 @@ model Prediction {
   profile Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
   chart   Chart?   @relation(fields: [chartId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, profileId, kind, periodStart])
   @@index([userId, periodStart])
   @@index([profileId, kind])
-  @@unique([userId, profileId, kind, periodStart])
 }
 
 // =========================
