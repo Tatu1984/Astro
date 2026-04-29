@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Send, Sparkles, Trash2 } from "lucide-react";
+import { Plus, Send, Sparkles, Trash2, UserPlus } from "lucide-react";
 
 import { Button } from "@/frontend/components/ui/Button";
 
@@ -381,6 +382,20 @@ export function ChatView({ initialSessions, initialActive }: Props) {
             <p className="text-sm text-white/55 mt-2">
               Start a new conversation to ask anything about your natal chart. Each chat is grounded in your real planet positions and houses.
             </p>
+            {error ? (
+              <div className="mt-4 rounded-md border border-[var(--color-brand-rose)]/40 bg-[var(--color-brand-rose)]/10 px-4 py-3 text-left">
+                <p className="text-sm text-[var(--color-brand-rose)] font-medium">Couldn&apos;t start a chat</p>
+                <p className="text-xs text-white/70 mt-1">{error}</p>
+                {error.toLowerCase().includes("birth profile") || error.toLowerCase().includes("profile") ? (
+                  <Link
+                    href="/user/profile"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-[var(--color-brand-gold)]/40 bg-[var(--color-brand-gold)]/10 text-[var(--color-brand-gold)] px-3 py-1.5 text-xs hover:bg-[var(--color-brand-gold)]/15"
+                  >
+                    <UserPlus className="h-3 w-3" /> Add your birth profile
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
             <div className="mt-5">
               <Button variant="primary" onClick={newSession} disabled={pending}>
                 <Plus className="h-4 w-4" /> New chat
