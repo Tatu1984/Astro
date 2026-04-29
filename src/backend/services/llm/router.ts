@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 
-import { prisma } from "@/backend/database/client";
-
 import { GeminiProvider } from "./gemini";
+import { logLlmCall, surfaceForRoute } from "./logger";
 import type {
   LlmGenerateInput,
   LlmGenerateResult,
@@ -39,7 +38,7 @@ export async function callLlm(input: CallLlmInput): Promise<LlmGenerateResult & 
   for (const provider of available) {
     try {
       const result = await callWithTransientRetry(provider, input);
-      await writeLog({
+      writeLog({
         ...input,
         promptHash,
         provider: result.provider,
@@ -54,7 +53,7 @@ export async function callLlm(input: CallLlmInput): Promise<LlmGenerateResult & 
     } catch (err) {
       lastError = err;
       const msg = err instanceof Error ? err.message : String(err);
-      await writeLog({
+      writeLog({
         ...input,
         promptHash,
         provider: provider.id,
@@ -134,7 +133,7 @@ export async function* callLlmStream(
       yield next.value;
     }
   } catch (err) {
-    await writeLog({
+    writeLog({
       ...input,
       promptHash,
       provider: provider.id,
@@ -149,7 +148,7 @@ export async function* callLlmStream(
     throw err;
   }
 
-  await writeLog({
+  writeLog({
     ...input,
     promptHash,
     provider: final.provider,
@@ -164,7 +163,7 @@ export async function* callLlmStream(
   return { ...final, promptHash };
 }
 
-async function writeLog(input: {
+interface WriteLogInput {
   route: string;
   userId?: string | null;
   promptHash: string;
@@ -176,24 +175,21 @@ async function writeLog(input: {
   latencyMs: number;
   status: "ok" | "error";
   error?: string;
-}) {
-  try {
-    await prisma.llmCallLog.create({
-      data: {
-        userId: input.userId ?? null,
-        route: input.route,
-        provider: input.provider,
-        model: input.model,
-        promptHash: input.promptHash,
-        inputTokens: input.inputTokens,
-        outputTokens: input.outputTokens,
-        costUsdMicro: input.costUsdMicro,
-        latencyMs: input.latencyMs,
-        status: input.status,
-        error: input.error,
-      },
-    });
-  } catch {
-    // observability shouldn't kill the request
-  }
+}
+
+function writeLog(input: WriteLogInput): void {
+  // Fire-and-forget; logger.ts never throws.
+  void logLlmCall({
+    userId: input.userId,
+    surface: surfaceForRoute(input.route),
+    provider: input.provider,
+    model: input.model,
+    promptHash: input.promptHash,
+    promptTokens: input.inputTokens,
+    completionTokens: input.outputTokens,
+    costUsdMicro: input.costUsdMicro,
+    latencyMs: input.latencyMs,
+    success: input.status === "ok",
+    errorCode: input.error,
+  });
 }
