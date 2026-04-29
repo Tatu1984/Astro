@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getAuthedUser } from "@/backend/auth/getAuthedUser";
 import { sendMessageStream } from "@/backend/services/chat.service";
+import type { ChatStreamEvent } from "@/shared/types/chat";
 
 const BodySchema = z.object({
   content: z.string().min(1).max(4000),
@@ -44,23 +45,31 @@ export async function POST(
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (event: object) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      const send = (event: ChatStreamEvent) => {
+        controller.enqueue(encoder.encode(`event: ${event.kind}\ndata: ${JSON.stringify(event)}\n\n`));
       };
 
       try {
         const events = sendMessageStream({ userId, sessionId: id, content });
         for await (const ev of events) {
-          send(ev);
-          if (ev.type === "error") {
+          if (ev.type === "chunk") {
+            send({ kind: "delta", type: "chunk", text: ev.text });
+          } else if (ev.type === "done") {
+            send({
+              kind: "done",
+              type: "done",
+              messageId: ev.assistantMessage.id,
+              userMessage: ev.userMessage,
+              assistantMessage: ev.assistantMessage,
+            });
+          } else {
+            send({ kind: "error", type: "error", message: ev.error, error: ev.error });
             break;
           }
         }
       } catch (err) {
-        send({
-          type: "error",
-          error: err instanceof Error ? err.message : String(err),
-        });
+        const msg = err instanceof Error ? err.message : String(err);
+        send({ kind: "error", type: "error", message: msg, error: msg });
       } finally {
         controller.close();
       }
