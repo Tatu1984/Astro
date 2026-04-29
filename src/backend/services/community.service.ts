@@ -19,10 +19,12 @@ const POST_LIST_INCLUDE = {
   _count: { select: { comments: true, reactions: true } },
 } as const satisfies Prisma.PostInclude;
 
-export async function listPublicPosts(viewerUserId: string) {
+export async function listPublicPosts(viewerUserId: string, opts?: { isModerator?: boolean }) {
+  const isMod = opts?.isModerator === true;
   const rows = await prisma.post.findMany({
     where: {
       deletedAt: null,
+      ...(isMod ? {} : { hiddenAt: null }),
       OR: [
         { visibility: "PUBLIC" },
         { visibility: "ANONYMOUS" },
@@ -37,14 +39,22 @@ export async function listPublicPosts(viewerUserId: string) {
   return rows.map((p) => maskAuthor(p, viewerUserId));
 }
 
-export async function getPostWithComments(viewerUserId: string, postId: string) {
+export async function getPostWithComments(
+  viewerUserId: string,
+  postId: string,
+  opts?: { isModerator?: boolean },
+) {
+  const isMod = opts?.isModerator === true;
   const p = await prisma.post.findUnique({
     where: { id: postId },
     include: {
       user: { select: { id: true, name: true, email: true } },
       reactions: { select: { id: true, userId: true, type: true } },
       comments: {
-        where: { deletedAt: null },
+        where: {
+          deletedAt: null,
+          ...(isMod ? {} : { hiddenAt: null }),
+        },
         orderBy: { createdAt: "asc" },
         include: {
           user: { select: { id: true, name: true, email: true } },
@@ -54,6 +64,7 @@ export async function getPostWithComments(viewerUserId: string, postId: string) 
     },
   });
   if (!p || p.deletedAt) throw new CommunityError(404, "post not found");
+  if (!isMod && p.hiddenAt) throw new CommunityError(404, "post not found");
 
   // Visibility check
   if (p.visibility === "PRIVATE" && p.userId !== viewerUserId) {
