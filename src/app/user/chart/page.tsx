@@ -8,6 +8,7 @@ import { listUserProfiles } from "@/backend/services/profile.service";
 import { resolveVedic } from "@/backend/services/vedic.service";
 import { ChartWheel } from "@/frontend/components/astro/ChartWheel";
 import { GlossaryTerm } from "@/frontend/components/glossary/GlossaryTerm";
+import { ChartTour } from "@/frontend/components/onboarding/ChartTour";
 import { TopBar } from "@/frontend/components/portal/TopBar";
 import { Badge } from "@/frontend/components/ui/Badge";
 import { Button } from "@/frontend/components/ui/Button";
@@ -35,6 +36,7 @@ export default async function ChartWorkspace({
   if (profiles.length === 0) {
     return (
       <>
+        <ChartTour />
         <TopBar title="Chart" subtitle="No profiles yet" right={<EmptyAddButton />} />
         <div className="p-6">
           <Card className="!p-10 text-center max-w-2xl">
@@ -94,6 +96,7 @@ export default async function ChartWorkspace({
 
   return (
     <>
+      <ChartTour />
       <TopBar
         title={`${active.fullName} · Natal`}
         subtitle={`${fmtPlace(active.birthPlace)} · Placidus houses · Tropical`}

@@ -1,7 +1,7 @@
 import { Sidebar, type NavItem } from "@/frontend/components/portal/Sidebar";
 import {
   Sun, CircleDot, TrendingUp, MessageCircle, Heart,
-  Calendar, ScrollText, Users, User, CreditCard, Phone,
+  Calendar, ScrollText, Users, User, CreditCard, Phone, Settings,
 } from "lucide-react";
 
 const NAV: NavItem[] = [
@@ -16,6 +16,7 @@ const NAV: NavItem[] = [
   { href: "/user/community",      label: "Community",    icon: <Users className="h-4 w-4" /> },
   { href: "/user/profile",        label: "Profile",      icon: <User className="h-4 w-4" /> },
   { href: "/user/billing",        label: "Billing",      icon: <CreditCard className="h-4 w-4" /> },
+  { href: "/user/settings",       label: "Settings",     icon: <Settings className="h-4 w-4" /> },
 ];
 
 export default function UserLayout({ children }: { children: React.ReactNode }) {
