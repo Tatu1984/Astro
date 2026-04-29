@@ -188,3 +188,54 @@ Reasons:
 
 When mobile-consult lands, expect new mobile-specific endpoints and/or
 shape adjustments — re-read this section then.
+
+## AI infrastructure (Phase 4)
+
+### POST `/api/horoscopes/:kind/stream`
+- Auth: cookie OR Bearer (same as `GET /api/horoscopes/:kind`).
+- Body: `{ profileId: string, forDate?: string (ISO-8601) }`.
+- Response: `text/event-stream` (SSE).
+- Event contract: `ChatStreamEvent` (see `src/shared/types/chat.ts`) plus a
+  horoscope-specific extension on the terminal `done` frame:
+  - `delta` — `{ kind: "delta", text: string }` — additive token slice.
+    Note: predictions use Gemini's JSON mode, so `delta.text` is raw JSON
+    fragments and is NOT human-readable until the buffer is parsed at
+    `done` time. Mobile clients should buffer rather than render deltas
+    directly (or use them only for a typing indicator).
+  - `done` — `{ kind: "done", cached: boolean, payload: HoroscopePayload,
+    displayFacts: HoroscopeDisplayFact[], provider: string|null,
+    model: string|null, generatedAt: string (ISO) }`.
+  - `error` — `{ kind: "error", message: string }`.
+- A cached prediction yields `done` immediately without any `delta` events.
+- Strategy: try `GET /api/horoscopes/:kind` first if you only need cached
+  data; otherwise call `/stream` for first-time generation. Fall back to
+  `GET` if SSE fails — `GET` computes synchronously and caches the same
+  result.
+
+### Disclaimer footer (server-side, do NOT strip)
+- Predictions and reports are auto-suffixed with a one-line entertainment
+  disclaimer (`_For self-reflection and entertainment, not medical, legal,
+  or financial advice._`). The footer is part of `payload.body` /
+  `bodyMarkdown` — render it as-is. Chat and compatibility outputs are
+  exempt and have no footer.
+
+### Birth-data quality caveats (inline)
+- When a profile has `unknownTime: true`, missing place/coords, or fuzzy
+  date data, the LLM is briefed with caveats that surface as italicised
+  hedges inside the prediction body itself ("Birth time is unknown — Moon
+  and ascendant are approximate…"). Mobile shouldn't try to detect these
+  programmatically; they're plain English.
+
+### Output safety softener (inline)
+- If a prediction or report trips the medical/legal/financial advice
+  detector, the body is suffixed with a softener line ("I can offer
+  perspective here, but for medical, legal, or financial decisions please
+  consult a qualified professional."). Treat as part of the body text.
+
+### Chat memory injection (transparent to mobile)
+- When the user starts a new chat session, the server quietly pulls
+  summaries of their last 5 idle past sessions and injects them into the
+  system prompt of the new session. This is invisible to the wire format
+  — `GET /api/chat/sessions/:id` filters out the SYSTEM-role memory
+  carrier message. Past-session themes simply make the assistant feel
+  more continuous; no new fields on the messages payload.
