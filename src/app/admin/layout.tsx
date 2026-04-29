@@ -1,7 +1,7 @@
 import { Sidebar, type NavItem } from "@/frontend/components/portal/Sidebar";
 import {
   Activity, Users, Stars, Shield, CreditCard, Cpu,
-  Flag, Beaker, ScrollText, Settings, Calendar, Wallet, IdCard, Undo2,
+  Flag, Beaker, ScrollText, Settings, Calendar, Wallet, IdCard, Undo2, BarChart3,
 } from "lucide-react";
 
 const NAV: NavItem[] = [
@@ -15,6 +15,7 @@ const NAV: NavItem[] = [
   { href: "/admin/moderation",     label: "Moderation",    icon: <Shield className="h-4 w-4" /> },
   { href: "/admin/subscriptions",  label: "Subscriptions", icon: <CreditCard className="h-4 w-4" /> },
   { href: "/admin/llm",            label: "LLM Cost",      icon: <Cpu className="h-4 w-4" /> },
+  { href: "/admin/analytics",      label: "Analytics",     icon: <BarChart3 className="h-4 w-4" /> },
   { href: "/admin/flags",          label: "Feature Flags", icon: <Flag className="h-4 w-4" /> },
   { href: "/admin/experiments",    label: "A/B Tests",     icon: <Beaker className="h-4 w-4" /> },
   { href: "/admin/audit",          label: "Audit Log",     icon: <ScrollText className="h-4 w-4" /> },
