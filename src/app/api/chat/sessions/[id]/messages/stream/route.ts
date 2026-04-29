@@ -54,6 +54,13 @@ export async function POST(
         for await (const ev of events) {
           if (ev.type === "chunk") {
             send({ kind: "delta", type: "chunk", text: ev.text });
+          } else if (ev.type === "tool_call") {
+            send({
+              kind: "tool_call",
+              name: ev.call.name,
+              args: ev.call.args,
+              href: ev.href,
+            });
           } else if (ev.type === "done") {
             send({
               kind: "done",

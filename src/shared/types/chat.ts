@@ -45,4 +45,23 @@ export type ChatStreamError = {
   error?: string;
 };
 
-export type ChatStreamEvent = ChatStreamDelta | ChatStreamDone | ChatStreamError;
+// Tool-call event — emitted when the assistant suggests a UI action.
+// Args are unstructured by design so each tool can validate its own shape
+// on the client. See backend/services/llm/tools.ts for the registry.
+export type ChatStreamToolCall = {
+  kind: "tool_call";
+  name:
+    | "show_chart"
+    | "show_compatibility"
+    | "show_transit_today"
+    | "show_predictions"
+    | "navigate";
+  args: Record<string, unknown>;
+  href: string | null;
+};
+
+export type ChatStreamEvent =
+  | ChatStreamDelta
+  | ChatStreamDone
+  | ChatStreamError
+  | ChatStreamToolCall;

@@ -9,6 +9,7 @@ import {
 } from "@/backend/services/chat-memory.service";
 import { resolveNatal } from "@/backend/services/chart.service";
 import { callLlm, callLlmStream } from "@/backend/services/llm/router";
+import { parseToolCalls, toolCallToHref, toolPromptBlock, type ToolCall } from "@/backend/services/llm/tools";
 import { getReadingStyleForUser, readingStyleBlock } from "@/backend/services/prompt-builder";
 
 export class ChatError extends Error {
@@ -200,7 +201,7 @@ ${JSON.stringify(
     }
   }
   const readingStyle = await getReadingStyleForUser(args.userId);
-  const baseSystem = `${SYSTEM_PROMPT}\n\n${readingStyleBlock(readingStyle)}`;
+  const baseSystem = `${SYSTEM_PROMPT}\n\n${readingStyleBlock(readingStyle)}\n\n${toolPromptBlock()}`;
   const systemPrompt = memoryBlock ? `${baseSystem}\n\n${memoryBlock}` : baseSystem;
 
   const conversational = session.messages.filter((m) => m.role !== "SYSTEM");
@@ -296,6 +297,7 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
 
 export type ChatStreamEvent =
   | { type: "chunk"; text: string }
+  | { type: "tool_call"; call: ToolCall; href: string | null }
   | { type: "done"; userMessage: AiChatMessage; assistantMessage: AiChatMessage }
   | { type: "error"; error: string };
 
@@ -313,6 +315,7 @@ export async function* sendMessageStream(args: SendMessageArgs): AsyncGenerator<
   }
 
   let fullAssistant = "";
+  let pendingToolBuffer = ""; // held back from the user-visible stream once we see "[["
   let lastFinal: {
     provider: string;
     model: string;
@@ -343,8 +346,21 @@ export async function* sendMessageStream(args: SendMessageArgs): AsyncGenerator<
         };
         break;
       }
-      fullAssistant += next.value.text;
-      yield { type: "chunk", text: next.value.text };
+      const piece = next.value.text;
+      fullAssistant += piece;
+
+      if (pendingToolBuffer) {
+        pendingToolBuffer += piece;
+        continue;
+      }
+      const idx = piece.indexOf("[[");
+      if (idx >= 0) {
+        const before = piece.slice(0, idx);
+        if (before) yield { type: "chunk", text: before };
+        pendingToolBuffer = piece.slice(idx);
+        continue;
+      }
+      yield { type: "chunk", text: piece };
     }
   } catch (err) {
     yield { type: "error", error: err instanceof Error ? err.message : String(err) };
@@ -356,11 +372,17 @@ export async function* sendMessageStream(args: SendMessageArgs): AsyncGenerator<
     return;
   }
 
+  const parsed = parseToolCalls(fullAssistant);
+  const cleanedAssistant = parsed.call ? parsed.cleaned : fullAssistant;
+  if (!parsed.call && pendingToolBuffer) {
+    yield { type: "chunk", text: pendingToolBuffer };
+  }
+
   const persisted = await persistTurn({
     userId: args.userId,
     sessionId: args.sessionId,
     userContent: built.trimmedContent,
-    assistantContent: fullAssistant,
+    assistantContent: cleanedAssistant,
     llmProvider: lastFinal.provider,
     llmModel: lastFinal.model,
     inputTokens: lastFinal.inputTokens,
@@ -368,6 +390,10 @@ export async function* sendMessageStream(args: SendMessageArgs): AsyncGenerator<
     costUsdMicro: lastFinal.costUsdMicro,
     setTitleIfMissing: built.sessionTitle === null,
   });
+
+  if (parsed.call) {
+    yield { type: "tool_call", call: parsed.call, href: toolCallToHref(parsed.call) };
+  }
 
   yield {
     type: "done",

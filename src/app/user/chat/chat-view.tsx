@@ -13,6 +13,7 @@ interface ChatMessage {
   llmProvider?: string | null;
   llmModel?: string | null;
   createdAt: string;
+  toolCall?: { name: string; args: Record<string, unknown>; href: string | null } | null;
 }
 
 interface ChatSession {
@@ -33,6 +34,17 @@ export interface SessionListItem {
 interface Props {
   initialSessions: SessionListItem[];
   initialActive: ChatSession | null;
+}
+
+function labelForTool(name: string): string {
+  switch (name) {
+    case "show_chart": return "Open my chart";
+    case "show_compatibility": return "Show compatibility";
+    case "show_transit_today": return "Show today's transits";
+    case "show_predictions": return "Open predictions";
+    case "navigate": return "Open";
+    default: return "Open";
+  }
 }
 
 const QUICK_PROMPTS = [
@@ -142,9 +154,10 @@ export function ChatView({ initialSessions, initialActive }: Props) {
           const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
           if (!dataLine) continue;
           type StreamEvent =
-            | { type: "chunk"; text: string }
-            | { type: "done"; userMessage: ChatMessage; assistantMessage: ChatMessage }
-            | { type: "error"; error: string };
+            | { kind?: "delta"; type: "chunk"; text: string }
+            | { kind: "tool_call"; name: string; args: Record<string, unknown>; href: string | null }
+            | { kind?: "done"; type: "done"; userMessage: ChatMessage; assistantMessage: ChatMessage }
+            | { kind?: "error"; type: "error"; error: string };
           let event: StreamEvent;
           try {
             event = JSON.parse(dataLine.slice(6)) as StreamEvent;
@@ -152,7 +165,7 @@ export function ChatView({ initialSessions, initialActive }: Props) {
             continue;
           }
 
-          if (event.type === "chunk") {
+          if ("type" in event && event.type === "chunk") {
             setActive((a) =>
               a
                 ? {
@@ -163,14 +176,26 @@ export function ChatView({ initialSessions, initialActive }: Props) {
                   }
                 : a,
             );
-          } else if (event.type === "error") {
+          } else if ("kind" in event && event.kind === "tool_call") {
+            const tc = { name: event.name, args: event.args, href: event.href };
+            setActive((a) =>
+              a
+                ? {
+                    ...a,
+                    messages: a.messages.map((m) =>
+                      m.id === assistantTempId ? { ...m, toolCall: tc } : m,
+                    ),
+                  }
+                : a,
+            );
+          } else if ("type" in event && event.type === "error") {
             setError(event.error);
             setActive((a) =>
               a
                 ? { ...a, messages: a.messages.filter((m) => m.id !== userTempId && m.id !== assistantTempId) }
                 : a,
             );
-          } else if (event.type === "done") {
+          } else if ("type" in event && event.type === "done") {
             setActive((a) =>
               a
                 ? {
@@ -178,7 +203,12 @@ export function ChatView({ initialSessions, initialActive }: Props) {
                     messages: [
                       ...a.messages.filter((m) => m.id !== userTempId && m.id !== assistantTempId),
                       event.userMessage,
-                      event.assistantMessage,
+                      // Carry the tool_call we may have already received on the temp assistant
+                      {
+                        ...event.assistantMessage,
+                        toolCall:
+                          a.messages.find((m) => m.id === assistantTempId)?.toolCall ?? null,
+                      },
                     ],
                   }
                 : a,
@@ -290,15 +320,25 @@ export function ChatView({ initialSessions, initialActive }: Props) {
               </div>
             ) : (
               active.messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={
-                    m.role === "USER"
-                      ? "ml-auto max-w-[80%] rounded-2xl rounded-br-sm bg-[var(--color-brand-violet)] text-white px-4 py-2.5 text-sm"
-                      : "mr-auto max-w-[80%] rounded-2xl rounded-bl-sm bg-white/5 border border-[var(--color-border)] text-white/90 px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
-                  }
-                >
-                  {m.content}
+                <div key={m.id} className={m.role === "USER" ? "ml-auto max-w-[80%]" : "mr-auto max-w-[80%]"}>
+                  <div
+                    className={
+                      m.role === "USER"
+                        ? "rounded-2xl rounded-br-sm bg-[var(--color-brand-violet)] text-white px-4 py-2.5 text-sm"
+                        : "rounded-2xl rounded-bl-sm bg-white/5 border border-[var(--color-border)] text-white/90 px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
+                    }
+                  >
+                    {m.content}
+                  </div>
+                  {m.role === "ASSISTANT" && m.toolCall?.href ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push(m.toolCall!.href!)}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[var(--color-brand-gold)]/40 bg-[var(--color-brand-gold)]/10 text-[var(--color-brand-gold)] px-3 py-1.5 text-xs hover:bg-[var(--color-brand-gold)]/15"
+                    >
+                      <Sparkles className="h-3 w-3" /> {labelForTool(m.toolCall.name)}
+                    </button>
+                  ) : null}
                 </div>
               ))
             )}
