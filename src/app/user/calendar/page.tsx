@@ -16,6 +16,7 @@ import {
   type UpcomingAspect,
 } from "@/backend/services/transit.service";
 import { MonthGrid } from "@/frontend/components/calendar/MonthGrid";
+import { GlossaryTerm } from "@/frontend/components/glossary/GlossaryTerm";
 import { TopBar } from "@/frontend/components/portal/TopBar";
 import { Card } from "@/frontend/components/ui/Card";
 
@@ -175,7 +176,9 @@ export default async function CalendarPage() {
                 >
                   <span className="font-medium text-white">{fmtDate(d.date)}</span>
                   <span className="text-[10px] text-white/45 uppercase tracking-wider">
-                    {d.weekday} · {d.nakshatra} · {d.tithiName}
+                    {d.weekday} ·{" "}
+                    <GlossaryTerm term="Nakshatra">{d.nakshatra}</GlossaryTerm> ·{" "}
+                    <GlossaryTerm term="Tithi">{d.tithiName}</GlossaryTerm>
                   </span>
                   <span className="ml-auto text-[var(--color-brand-aqua)] font-semibold tabular-nums">
                     {d.score}/100
@@ -193,7 +196,10 @@ export default async function CalendarPage() {
                       className="flex flex-wrap items-center gap-2 rounded-md bg-[var(--color-brand-rose)]/10 border border-[var(--color-brand-rose)]/30 px-3 py-1.5"
                     >
                       <span className="text-white">{fmtDate(d.date)}</span>
-                      <span className="text-[10px] text-white/45">{d.nakshatra} · {d.tithiName}</span>
+                      <span className="text-[10px] text-white/45">
+                        <GlossaryTerm term="Nakshatra">{d.nakshatra}</GlossaryTerm> ·{" "}
+                        <GlossaryTerm term="Tithi">{d.tithiName}</GlossaryTerm>
+                      </span>
                       <span className="ml-auto text-[var(--color-brand-rose)] tabular-nums">{d.score}</span>
                     </li>
                   ))}
@@ -215,10 +221,16 @@ export default async function CalendarPage() {
                   key={`${e.kind}-${i}`}
                   className="flex flex-wrap items-center gap-3 rounded-md bg-white/5 border border-white/10 px-3 py-2"
                 >
-                  <span className="font-medium text-white capitalize">{e.kind} eclipse</span>
+                  <span className="font-medium text-white capitalize">
+                    <GlossaryTerm term="Eclipse">{e.kind} eclipse</GlossaryTerm>
+                  </span>
                   <span className="text-white/60 text-xs">{fmtDate(e.date)}</span>
                   <span className="text-[10px] text-white/45 uppercase tracking-wider">
-                    Sun {e.sunSign} · Moon {e.moonSign} · {e.nodalDistance.toFixed(1)}° from node
+                    <GlossaryTerm term="Sun">Sun</GlossaryTerm>{" "}
+                    <GlossaryTerm term={e.sunSign}>{e.sunSign}</GlossaryTerm> ·{" "}
+                    <GlossaryTerm term="Moon">Moon</GlossaryTerm>{" "}
+                    <GlossaryTerm term={e.moonSign}>{e.moonSign}</GlossaryTerm> ·{" "}
+                    {e.nodalDistance.toFixed(1)}° from node
                   </span>
                   <span
                     className={
@@ -243,7 +255,10 @@ export default async function CalendarPage() {
             <ul className="space-y-2 text-sm">
               {retrogrades.map((r, i) => (
                 <li key={`${r.planet}-${i}`} className="flex flex-wrap items-center gap-3 rounded-md bg-white/5 border border-white/10 px-3 py-2">
-                  <span className="font-medium text-white">{r.planet} ℞</span>
+                  <span className="font-medium text-white">
+                    <GlossaryTerm term={r.planet}>{r.planet}</GlossaryTerm>{" "}
+                    <GlossaryTerm term="Retrograde">℞</GlossaryTerm>
+                  </span>
                   <span className="text-white/60 text-xs">
                     {fmtDate(r.startDate)} → {fmtDate(r.endDate)}
                   </span>
@@ -279,18 +294,30 @@ export default async function CalendarPage() {
                   </div>
                   <div>
                     <div className="text-sm text-white">
-                      <strong>{e.transit}</strong>{" "}
-                      <span className="text-white/55">{e.aspect}</span>{" "}
-                      natal <strong>{e.natal}</strong>
+                      <strong>
+                        <GlossaryTerm term={e.transit}>{e.transit}</GlossaryTerm>
+                      </strong>{" "}
+                      <span className="text-white/55">
+                        <GlossaryTerm term={e.aspect}>{e.aspect}</GlossaryTerm>
+                      </span>{" "}
+                      natal{" "}
+                      <strong>
+                        <GlossaryTerm term={e.natal}>{e.natal}</GlossaryTerm>
+                      </strong>
                     </div>
                     <div className="text-[10px] text-white/40 mt-0.5 uppercase tracking-wider">
-                      in {e.natalSign} · h{e.natalHouse ?? "—"}
+                      in <GlossaryTerm term={e.natalSign}>{e.natalSign}</GlossaryTerm> ·{" "}
+                      {e.natalHouse ? (
+                        <GlossaryTerm term={`house ${e.natalHouse}`}>h{e.natalHouse}</GlossaryTerm>
+                      ) : (
+                        "h—"
+                      )}
                     </div>
                   </div>
                   <span
                     className={`justify-self-start sm:justify-self-end inline-block rounded-md border px-2 py-0.5 text-[11px] capitalize ${ASPECT_TONE[e.aspect] ?? "border-white/10 text-white/55"}`}
                   >
-                    {e.aspect}
+                    <GlossaryTerm term={e.aspect}>{e.aspect}</GlossaryTerm>
                   </span>
                 </li>
               ))}

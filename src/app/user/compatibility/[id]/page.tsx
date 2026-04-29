@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 
 import { auth } from "@/auth";
 import { getCompatibility } from "@/backend/services/synastry.service";
+import { GlossaryTerm } from "@/frontend/components/glossary/GlossaryTerm";
 import { TopBar } from "@/frontend/components/portal/TopBar";
 import { Card } from "@/frontend/components/ui/Card";
 
@@ -129,14 +130,25 @@ export default async function CompatibilityDetail({
               {typeof details.westernScore === "number" && ashta ? (
                 <>
                   {" · "}
-                  Western {details.westernScore} · Ashtakoot {ashta.total}/{ashta.totalMax}
+                  Western {details.westernScore} ·{" "}
+                  <GlossaryTerm term="Ashtakoot">Ashtakoot</GlossaryTerm> {ashta.total}/{ashta.totalMax}
                 </>
               ) : null}
             </p>
             <p className="text-xs text-white/45">
-              {ashta
-                ? "Romantic compatibility blends Western synastry (40%) with Ashtakoot Milan (60%); narrative below has the real texture."
-                : "Score reflects aspect harmony between the two charts; the narrative below is what really matters."}
+              {ashta ? (
+                <>
+                  Romantic compatibility blends Western{" "}
+                  <GlossaryTerm term="Synastry">synastry</GlossaryTerm> (40%) with{" "}
+                  <GlossaryTerm term="Ashtakoot">Ashtakoot Milan</GlossaryTerm> (60%); narrative
+                  below has the real texture.
+                </>
+              ) : (
+                <>
+                  Score reflects aspect harmony between the two charts; the narrative below is what
+                  really matters.
+                </>
+              )}
             </p>
           </div>
         </Card>
@@ -144,7 +156,9 @@ export default async function CompatibilityDetail({
         {ashta ? (
           <Card className="!p-5">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs uppercase tracking-wider text-[var(--color-brand-gold)]">Ashtakoot Milan</h3>
+              <h3 className="text-xs uppercase tracking-wider text-[var(--color-brand-gold)]">
+                <GlossaryTerm term="Ashtakoot">Ashtakoot Milan</GlossaryTerm>
+              </h3>
               <span
                 className={
                   ashta.verdict === "outstanding" || ashta.verdict === "excellent"
@@ -198,7 +212,11 @@ export default async function CompatibilityDetail({
                   className={`rounded-md border ${ASPECT_TONE[a.aspect] ?? "border-white/10 bg-white/5"} px-3 py-2`}
                 >
                   <div className="text-white">
-                    {a.a} <span className="text-white/40">{a.aspect}</span> {a.b}
+                    <GlossaryTerm term={a.a}>{a.a}</GlossaryTerm>{" "}
+                    <span className="text-white/40">
+                      <GlossaryTerm term={a.aspect}>{a.aspect}</GlossaryTerm>
+                    </span>{" "}
+                    <GlossaryTerm term={a.b}>{a.b}</GlossaryTerm>
                   </div>
                   <div className="text-[10px] text-white/45 uppercase tracking-wider">
                     orb {a.delta.toFixed(1)}° · weight {a.weight > 0 ? `+${a.weight}` : a.weight}

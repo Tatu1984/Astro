@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { GlossaryTerm } from "@/frontend/components/glossary/GlossaryTerm";
 import { Card } from "@/frontend/components/ui/Card";
 
 export type CalendarEvent = {
@@ -16,6 +17,7 @@ export type CalendarEvent = {
   natalSign?: string;
   natalHouse?: number | null;
   severity: 1 | 2 | 3;
+  humanText?: string;
 };
 
 type Props = {
@@ -56,10 +58,48 @@ function eventsByDay(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
   return map;
 }
 
-function describeEvent(e: CalendarEvent): string {
-  if (e.type === "INGRESS") return `${e.planet} enters ${e.toSign} (from ${e.fromSign})`;
-  if (e.type === "RETRO_STATION") return `${e.planet} stations ${e.station}`;
-  return `${e.planet} ${e.aspect} natal ${e.natal} (${e.natalSign}${e.natalHouse ? ` · h${e.natalHouse}` : ""})`;
+function EventTechnicalLabel({ e }: { e: CalendarEvent }) {
+  if (e.type === "INGRESS") {
+    return (
+      <>
+        <GlossaryTerm term={e.planet}>{e.planet}</GlossaryTerm> enters{" "}
+        {e.toSign ? (
+          <GlossaryTerm term={e.toSign}>{e.toSign}</GlossaryTerm>
+        ) : (
+          "—"
+        )}{" "}
+        (<GlossaryTerm term="Ingress">ingress</GlossaryTerm> from {e.fromSign})
+      </>
+    );
+  }
+  if (e.type === "RETRO_STATION") {
+    return (
+      <>
+        <GlossaryTerm term={e.planet}>{e.planet}</GlossaryTerm>{" "}
+        <GlossaryTerm term="Station">stations</GlossaryTerm>{" "}
+        <GlossaryTerm term={e.station === "retrograde" ? "Retrograde" : "Direct"}>
+          {e.station}
+        </GlossaryTerm>
+      </>
+    );
+  }
+  return (
+    <>
+      <GlossaryTerm term={e.planet}>{e.planet}</GlossaryTerm>{" "}
+      {e.aspect ? (
+        <GlossaryTerm term={e.aspect}>{e.aspect}</GlossaryTerm>
+      ) : null}{" "}
+      natal {e.natal ? <GlossaryTerm term={e.natal}>{e.natal}</GlossaryTerm> : "—"}{" "}
+      ({e.natalSign ? <GlossaryTerm term={e.natalSign}>{e.natalSign}</GlossaryTerm> : ""}
+      {e.natalHouse ? (
+        <>
+          {" · "}
+          <GlossaryTerm term={`house ${e.natalHouse}`}>h{e.natalHouse}</GlossaryTerm>
+        </>
+      ) : null}
+      )
+    </>
+  );
 }
 
 export function MonthGrid({ profileId, initialFromIso, initialToIso }: Props) {
@@ -174,11 +214,13 @@ export function MonthGrid({ profileId, initialFromIso, initialToIso }: Props) {
               const k = `${cell.date.getUTCFullYear()}-${cell.date.getUTCMonth() + 1}-${cell.day}`;
               const evs = eventsMap.get(k) ?? [];
               const isSelected = selected?.key === k;
+              const tipLines = evs.map((e) => e.humanText ?? "").filter(Boolean).join("\n");
               return (
                 <button
                   key={k}
                   type="button"
                   onClick={() => setSelected({ key: k, events: evs })}
+                  title={tipLines || undefined}
                   className={
                     "h-16 rounded-md border px-1.5 py-1 text-left flex flex-col justify-between transition-colors " +
                     (isSelected
@@ -242,10 +284,17 @@ export function MonthGrid({ profileId, initialFromIso, initialToIso }: Props) {
                     className="inline-block w-2 h-2 rounded-full"
                     style={{ backgroundColor: SEVERITY_COLOR[e.severity] }}
                   />
-                  <span className="text-[10px] uppercase tracking-wider text-white/50">{e.type.replace(/_/g, " ")}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/50">
+                    {e.type.replace(/_/g, " ")}
+                  </span>
                 </div>
-                <div className="text-white mt-1">{describeEvent(e)}</div>
-                <div className="text-[10px] text-white/40 mt-0.5">
+                <div className="text-white mt-1 text-sm">
+                  <EventTechnicalLabel e={e} />
+                </div>
+                {e.humanText ? (
+                  <div className="text-xs text-white/65 leading-relaxed mt-1">{e.humanText}</div>
+                ) : null}
+                <div className="text-[10px] text-white/40 mt-1">
                   {new Date(e.date).toUTCString().slice(17, 22)} UTC
                 </div>
               </li>

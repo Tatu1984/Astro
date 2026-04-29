@@ -7,6 +7,7 @@ import { resolveNatal } from "@/backend/services/chart.service";
 import { listUserProfiles } from "@/backend/services/profile.service";
 import { resolveVedic } from "@/backend/services/vedic.service";
 import { ChartWheel } from "@/frontend/components/astro/ChartWheel";
+import { GlossaryTerm } from "@/frontend/components/glossary/GlossaryTerm";
 import { TopBar } from "@/frontend/components/portal/TopBar";
 import { Badge } from "@/frontend/components/ui/Badge";
 import { Button } from "@/frontend/components/ui/Button";
@@ -125,7 +126,7 @@ export default async function ChartWorkspace({
               <Card>
                 <h3 className="font-semibold text-[var(--color-brand-gold)] mb-3">Axes &amp; cusps</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                  <Axis label="Ascendant" deg={chart.ascendant_deg} />
+                  <Axis label="Ascendant" deg={chart.ascendant_deg} term="Lagna" />
                   <Axis label="Midheaven (MC)" deg={chart.midheaven_deg} />
                   <Axis label="Descendant" deg={(chart.ascendant_deg + 180) % 360} />
                   <Axis label="IC" deg={(chart.midheaven_deg + 180) % 360} />
@@ -133,15 +134,20 @@ export default async function ChartWorkspace({
                 <div className="mt-5">
                   <p className="text-xs uppercase tracking-wider text-white/40 mb-2">House cusps</p>
                   <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
-                    {chart.houses.map((h, i) => (
-                      <div
-                        key={i}
-                        className="rounded border border-[var(--color-border)] bg-white/5 px-2 py-1.5 text-white/75"
-                      >
-                        <span className="text-white/45 mr-1">H{i + 1}</span>
-                        {h.toFixed(2)}° {signFor(h)}
-                      </div>
-                    ))}
+                    {chart.houses.map((h, i) => {
+                      const sign = signFor(h);
+                      return (
+                        <div
+                          key={i}
+                          className="rounded border border-[var(--color-border)] bg-white/5 px-2 py-1.5 text-white/75"
+                        >
+                          <span className="text-white/45 mr-1">
+                            <GlossaryTerm term={`house ${i + 1}`}>H{i + 1}</GlossaryTerm>
+                          </span>
+                          {h.toFixed(2)}° <GlossaryTerm term={sign}>{sign}</GlossaryTerm>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </Card>
@@ -160,13 +166,26 @@ export default async function ChartWorkspace({
                     return (
                       <li key={p.name} className="flex items-center justify-between py-2.5 gap-2">
                         <div className="flex flex-col">
-                          <span className="text-white">{p.name}</span>
+                          <span className="text-white">
+                            <GlossaryTerm term={p.name}>{p.name}</GlossaryTerm>
+                          </span>
                           <span className="text-[10px] text-white/40 uppercase tracking-wider">
-                            H{p.house ?? "—"}{retro ? " · R" : ""}
+                            {p.house ? (
+                              <GlossaryTerm term={`house ${p.house}`}>H{p.house}</GlossaryTerm>
+                            ) : (
+                              "H—"
+                            )}
+                            {retro ? (
+                              <>
+                                {" · "}
+                                <GlossaryTerm term="Retrograde">R</GlossaryTerm>
+                              </>
+                            ) : null}
                           </span>
                         </div>
                         <span className="text-white/65 text-xs tabular-nums text-right">
-                          {p.sign}<br/>
+                          <GlossaryTerm term={p.sign}>{p.sign}</GlossaryTerm>
+                          <br />
                           <span className="text-white/45">{degInSign.toFixed(2)}°</span>
                         </span>
                       </li>
@@ -210,12 +229,17 @@ function signFor(longitudeDeg: number): string {
   return SIGNS[Math.floor(norm / 30)];
 }
 
-function Axis({ label, deg }: { label: string; deg: number }) {
+function Axis({ label, deg, term }: { label: string; deg: number; term?: string }) {
+  const sign = signFor(deg);
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wider text-white/40">{label}</p>
+      <p className="text-[10px] uppercase tracking-wider text-white/40">
+        {term ? <GlossaryTerm term={term}>{label}</GlossaryTerm> : label}
+      </p>
       <p className="text-sm text-white/85 tabular-nums">{deg.toFixed(2)}°</p>
-      <p className="text-[10px] text-white/45">{signFor(deg)}</p>
+      <p className="text-[10px] text-white/45">
+        <GlossaryTerm term={sign}>{sign}</GlossaryTerm>
+      </p>
     </div>
   );
 }
@@ -254,7 +278,10 @@ function VedicPanel({ vedic }: { vedic: VedicResponse }) {
             </span>
           </h3>
           <p className="text-xs text-white/55 mt-1">
-            Lagna: <strong className="text-white">{vedic.ascendant_sign}</strong>{" "}
+            <GlossaryTerm term="Lagna">Lagna</GlossaryTerm>:{" "}
+            <strong className="text-white">
+              <GlossaryTerm term={vedic.ascendant_sign}>{vedic.ascendant_sign}</GlossaryTerm>
+            </strong>{" "}
             {(vedic.sidereal_ascendant % 30).toFixed(2)}° · divisional signs per planet listed below.
           </p>
         </div>
@@ -266,7 +293,9 @@ function VedicPanel({ vedic }: { vedic: VedicResponse }) {
           }
           title={vedic.manglik_reason}
         >
-          {vedic.is_manglik ? "Manglik" : "Non-manglik"}
+          <GlossaryTerm term="Manglik">
+            {vedic.is_manglik ? "Manglik" : "Non-manglik"}
+          </GlossaryTerm>
         </span>
       </div>
 
@@ -301,10 +330,25 @@ function VedicPanel({ vedic }: { vedic: VedicResponse }) {
             >
               <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 items-baseline">
                 <div>
-                  <span className="font-medium text-white">{p.name}</span>{" "}
-                  <span className="text-white/55">in {p.sidereal_sign}</span>
+                  <span className="font-medium text-white">
+                    <GlossaryTerm term={p.name}>{p.name}</GlossaryTerm>
+                  </span>{" "}
+                  <span className="text-white/55">
+                    in <GlossaryTerm term={p.sidereal_sign}>{p.sidereal_sign}</GlossaryTerm>
+                  </span>
                   <span className="text-[10px] text-white/40 ml-2 uppercase tracking-wider">
-                    h{p.house ?? "—"} · {p.nakshatra} pada {p.pada}{p.retrograde ? " · R" : ""}
+                    {p.house ? (
+                      <GlossaryTerm term={`house ${p.house}`}>h{p.house}</GlossaryTerm>
+                    ) : (
+                      "h—"
+                    )}{" "}
+                    · <GlossaryTerm term="Nakshatra">{p.nakshatra}</GlossaryTerm> pada {p.pada}
+                    {p.retrograde ? (
+                      <>
+                        {" · "}
+                        <GlossaryTerm term="Retrograde">R</GlossaryTerm>
+                      </>
+                    ) : null}
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-1 text-[10px] uppercase tracking-wider text-white/45 col-span-full">
@@ -345,14 +389,23 @@ function DashaBlock({
         <p className="text-[10px] text-white/35">{subtitle}</p>
       </div>
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-white/35">Mahadasha</p>
-        <p className="text-sm font-semibold text-white">{maha.lord}</p>
+        <p className="text-[10px] uppercase tracking-wider text-white/35">
+          <GlossaryTerm term="Dasha">Mahadasha</GlossaryTerm>
+        </p>
+        <p className="text-sm font-semibold text-white">
+          <GlossaryTerm term={maha.lord}>{maha.lord}</GlossaryTerm>
+        </p>
         <p className="text-[10px] text-white/40">{fmtPeriod(maha)}</p>
       </div>
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-white/35">Antardasha</p>
+        <p className="text-[10px] uppercase tracking-wider text-white/35">
+          <GlossaryTerm term="Antardasha">Antardasha</GlossaryTerm>
+        </p>
         <p className="text-sm text-white">
-          {antar.lord} <span className="text-white/45 text-xs">in {maha.lord}</span>
+          <GlossaryTerm term={antar.lord}>{antar.lord}</GlossaryTerm>{" "}
+          <span className="text-white/45 text-xs">
+            in <GlossaryTerm term={maha.lord}>{maha.lord}</GlossaryTerm>
+          </span>
         </p>
         <p className="text-[10px] text-white/40">{fmtPeriod(antar)}</p>
       </div>
