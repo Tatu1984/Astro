@@ -44,6 +44,7 @@ model User {
   timezone      String?
   bio           String?
   referralCode  String      @unique @default(cuid())
+  bannedUntil   DateTime?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   deletedAt     DateTime?
@@ -64,8 +65,14 @@ model User {
   bookings             Booking[]           @relation("UserBookings")
   reviews              Review[]            @relation("UserReviews")
   payoutsProcessed     Payout[]            @relation("PayoutProcessor")
+  moderationActions    ModerationAction[]  @relation("ModerationActor")
+  auditLogs            AuditLog[]          @relation("AuditActor")
+  hiddenPosts          Post[]              @relation("PostHiddenBy")
+  hiddenComments       Comment[]           @relation("CommentHiddenBy")
+  kycReviews           KycDocument[]       @relation("KycReviewer")
 
   @@index([deletedAt])
+  @@index([bannedUntil])
 }
 
 // OAuth identities — Auth.js calls these "Account"
@@ -128,6 +135,35 @@ enum AstrologerStatus {
   SUSPENDED
 }
 
+// Public-signup onboarding state machine. Distinct from AstrologerStatus
+// because AstrologerProfile.status is the admin-decided lifecycle while
+// onboardingStep is what the astrologer themselves has completed.
+enum OnboardingStep {
+  SIGNED_UP
+  PROFILE_SUBMITTED
+  KYC_SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum KycDocumentKind {
+  AADHAAR_FRONT
+  AADHAAR_BACK
+  PAN
+  SELFIE_PHOTO
+  QUALIFICATION_CERT
+  EXPERIENCE_PROOF
+  OTHER
+}
+
+enum KycDocStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RESUBMIT_REQUESTED
+}
+
 // Sensitive fields (kycNumber, bankAccountNumber, upiId) are stored
 // plain-text in Phase 1. Application-level encryption + audit trail land
 // before any production data flows in. NeonDB encrypts at rest; the gap
@@ -169,9 +205,10 @@ model AstrologerProfile {
   bankIfsc          String?
   upiId             String?
 
-  status        AstrologerStatus @default(PENDING)
-  onboardedById String?
-  onboardedBy   User?            @relation("AstrologerOnboardedBy", fields: [onboardedById], references: [id], onDelete: SetNull)
+  status         AstrologerStatus @default(PENDING)
+  onboardingStep OnboardingStep   @default(SIGNED_UP)
+  onboardedById  String?
+  onboardedBy    User?            @relation("AstrologerOnboardedBy", fields: [onboardedById], references: [id], onDelete: SetNull)
 
   // Aggregated review stats — recomputed on each new review
   averageRating Float @default(0)
@@ -187,9 +224,39 @@ model AstrologerProfile {
   reviews            Review[]
   ledger             WalletLedger[]
   payouts            Payout[]
+  kycDocuments       KycDocument[]
 
   @@index([status])
+  @@index([onboardingStep])
   @@index([onboardedById])
+}
+
+// Per-document KYC artefact uploaded by the astrologer during public
+// onboarding. AstrologerProfile.kycType + kycNumber remain the canonical
+// admin-onboarding fields; this table tracks scanned proofs.
+model KycDocument {
+  id                  String            @id @default(cuid())
+  astrologerProfileId String
+  astrologerProfile   AstrologerProfile @relation(fields: [astrologerProfileId], references: [id], onDelete: Cascade)
+
+  kind        KycDocumentKind
+  storageKey  String
+  fileName    String
+  contentType String
+  sizeBytes   Int
+
+  status            KycDocStatus @default(PENDING)
+  reviewerNoteAdmin String?      @db.Text
+  reviewedById      String?
+  reviewedBy        User?        @relation("KycReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([astrologerProfileId])
+  @@index([status])
+  @@index([astrologerProfileId, kind])
 }
 
 // =========================
@@ -626,36 +693,44 @@ enum PostVisibility {
 }
 
 model Post {
-  id         String         @id @default(cuid())
-  userId     String
-  body       String         @db.Text
-  visibility PostVisibility @default(PUBLIC)
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  deletedAt  DateTime?
+  id             String         @id @default(cuid())
+  userId         String
+  body           String         @db.Text
+  visibility     PostVisibility @default(PUBLIC)
+  hiddenAt       DateTime?
+  hiddenByUserId String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
 
   user      User       @relation("UserPosts", fields: [userId], references: [id], onDelete: Cascade)
+  hiddenBy  User?      @relation("PostHiddenBy", fields: [hiddenByUserId], references: [id], onDelete: SetNull)
   comments  Comment[]
   reactions Reaction[]
 
   @@index([userId])
   @@index([visibility, createdAt])
   @@index([deletedAt])
+  @@index([hiddenAt])
 }
 
 model Comment {
-  id        String    @id @default(cuid())
-  postId    String
-  userId    String
-  body      String    @db.Text
-  createdAt DateTime  @default(now())
-  deletedAt DateTime?
+  id             String    @id @default(cuid())
+  postId         String
+  userId         String
+  body           String    @db.Text
+  hiddenAt       DateTime?
+  hiddenByUserId String?
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
 
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user User @relation("UserComments", fields: [userId], references: [id], onDelete: Cascade)
+  post     Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user     User  @relation("UserComments", fields: [userId], references: [id], onDelete: Cascade)
+  hiddenBy User? @relation("CommentHiddenBy", fields: [hiddenByUserId], references: [id], onDelete: SetNull)
 
   @@index([postId, createdAt])
   @@index([userId])
+  @@index([hiddenAt])
 }
 
 model Reaction {
@@ -736,4 +811,81 @@ model LlmCallLog {
 
   @@index([provider, createdAt])
   @@index([route, createdAt])
+  @@index([createdAt])
+  @@index([model, createdAt])
+  @@index([status, createdAt])
+}
+
+// =========================
+// MODERATION (admin actions over community + users)
+// =========================
+
+enum ModerationKind {
+  HIDE_POST
+  DELETE_POST
+  HIDE_COMMENT
+  DELETE_COMMENT
+  BAN_USER_24H
+  BAN_USER_PERM
+  UNBAN
+  RESTORE
+}
+
+enum ModerationTargetType {
+  POST
+  COMMENT
+  USER
+}
+
+model ModerationAction {
+  id          String               @id @default(cuid())
+  kind        ModerationKind
+  targetType  ModerationTargetType
+  targetId    String
+  reason      String?              @db.Text
+  moderatorId String
+  moderator   User                 @relation("ModerationActor", fields: [moderatorId], references: [id], onDelete: Cascade)
+  createdAt   DateTime             @default(now())
+  expiresAt   DateTime?
+
+  @@index([targetType, targetId, createdAt])
+  @@index([moderatorId, createdAt])
+  @@index([kind, createdAt])
+}
+
+// =========================
+// AUDIT LOG (every privileged write — admin, moderation, payout, refund, role change)
+// =========================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  kind       String
+  resource   String
+  resourceId String?
+  payload    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([kind, createdAt])
+  @@index([resource, resourceId, createdAt])
+  @@index([createdAt])
+}
+
+// =========================
+// FEATURE FLAGS (boolean / rollout %)
+// =========================
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  description String?  @db.Text
+  enabled     Boolean  @default(false)
+  rolloutPct  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
 }
