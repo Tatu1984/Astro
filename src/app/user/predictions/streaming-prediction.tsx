@@ -91,7 +91,9 @@ export function StreamingPrediction({ kind, profileId, rangeLabelFor }: Props) {
         const decoder = new TextDecoder();
         let buf = "";
         let charCount = 0;
-        while (!cancelled) {
+        let streamErr: string | null = null;
+        let receivedDone = false;
+        outer: while (!cancelled) {
           const { value, done: streamDone } = await reader.read();
           if (streamDone) break;
           buf += decoder.decode(value, { stream: true });
@@ -101,25 +103,33 @@ export function StreamingPrediction({ kind, profileId, rangeLabelFor }: Props) {
             buf = buf.slice(nl + 2);
             const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
             if (!dataLine) continue;
+            let ev: StreamFrame | null = null;
             try {
-              const ev = JSON.parse(dataLine.slice(6)) as StreamFrame;
-              if (ev.kind === "delta") {
-                charCount += ev.text.length;
-                setStreamingChars(charCount);
-              } else if (ev.kind === "error") {
-                throw new Error(ev.message);
-              } else if (ev.kind === "done") {
-                if (!cancelled) setDone(ev);
-                return;
-              }
+              ev = JSON.parse(dataLine.slice(6)) as StreamFrame;
             } catch (err) {
-              if (!cancelled) {
-                console.warn("[streaming-prediction] event parse failed", err);
-              }
+              if (!cancelled) console.warn("[streaming-prediction] event JSON parse failed", err);
+              continue;
+            }
+            if (ev.kind === "delta") {
+              charCount += ev.text.length;
+              setStreamingChars(charCount);
+            } else if (ev.kind === "error") {
+              streamErr = ev.message;
+              break outer;
+            } else if (ev.kind === "done") {
+              if (!cancelled) setDone(ev);
+              receivedDone = true;
+              break outer;
             }
           }
         }
-        if (!cancelled && !done) {
+        if (cancelled) return;
+        if (streamErr) {
+          console.warn("[streaming-prediction] stream emitted error, falling back to GET", streamErr);
+          await fallbackToGet();
+          return;
+        }
+        if (!receivedDone) {
           await fallbackToGet();
         }
       } catch (err) {

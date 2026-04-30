@@ -64,6 +64,61 @@ const KIND_TO_PRISMA: Record<ResolveHoroscopeKind, PredictionKind> = {
  *   MONTHLY → local 1st of month     → +1 month
  *   YEARLY  → local Jan 1            → +1 year
  */
+/**
+ * Per-kind LLM output budget. WEEKLY/MONTHLY/YEARLY routinely truncate
+ * mid-JSON at 1024 tokens because the payload contains 4 separate
+ * narrative blocks (headline + body + 3 domain bodies). Generous budget
+ * is cheap on Gemini Flash and the alternative is a blank screen.
+ */
+function maxTokensFor(kind: ResolveHoroscopeKind): number {
+  switch (kind) {
+    case "DAILY": return 1024;
+    case "WEEKLY": return 2048;
+    case "MONTHLY": return 3072;
+    case "YEARLY": return 4096;
+  }
+}
+
+/**
+ * Best-effort JSON extraction from an LLM response. Handles:
+ *   - Surrounding prose / markdown code fences
+ *   - Trailing commentary after the JSON envelope
+ *   - Truncated tail (closes unfinished strings + missing braces if it can)
+ * Throws if no usable object can be salvaged.
+ */
+function parseHoroscopePayloadFromText(raw: string): HoroscopePayload {
+  const text = raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
+  const start = text.indexOf("{");
+  if (start < 0) throw new Error("no opening brace");
+  const end = text.lastIndexOf("}");
+  let candidate = end > start ? text.slice(start, end + 1) : text.slice(start);
+  // First try: as-is.
+  try {
+    return JSON.parse(candidate) as HoroscopePayload;
+  } catch {
+    // Fallthrough to repair.
+  }
+  // Repair: close any unfinished string, then balance braces.
+  // Count quotes outside escape sequences.
+  let inStr = false;
+  let escape = false;
+  for (let i = 0; i < candidate.length; i++) {
+    const ch = candidate[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') inStr = !inStr;
+  }
+  if (inStr) candidate += '"';
+  // Balance braces.
+  let depth = 0;
+  for (const ch of candidate) {
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
+  }
+  while (depth-- > 0) candidate += "}";
+  return JSON.parse(candidate) as HoroscopePayload;
+}
+
 function periodBoundsUtc(
   d: Date,
   kind: ResolveHoroscopeKind,
@@ -320,16 +375,12 @@ export async function resolveHoroscope(args: ResolveArgs): Promise<{
     userPrompt,
     jsonOutput: true,
     temperature: 0.7,
-    maxOutputTokens: args.kind === "YEARLY" ? 2048 : 1024,
+    maxOutputTokens: maxTokensFor(args.kind),
   });
 
   let payload: HoroscopePayload;
   try {
-    const raw = llm.text.trim();
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    const json = start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
-    payload = JSON.parse(json) as HoroscopePayload;
+    payload = parseHoroscopePayloadFromText(llm.text);
   } catch {
     throw new LlmError("router", 502, `LLM returned non-JSON response: ${llm.text.slice(0, 200)}`);
   }
@@ -492,7 +543,7 @@ export async function* resolveHoroscopeStream(
     userPrompt,
     jsonOutput: true,
     temperature: 0.7,
-    maxOutputTokens: args.kind === "YEARLY" ? 2048 : 1024,
+    maxOutputTokens: maxTokensFor(args.kind),
   });
 
   let fullText = "";
@@ -525,11 +576,7 @@ export async function* resolveHoroscopeStream(
 
   let payload: HoroscopePayload;
   try {
-    const raw = fullText.trim();
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    const json = start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
-    payload = JSON.parse(json) as HoroscopePayload;
+    payload = parseHoroscopePayloadFromText(fullText);
   } catch {
     yield { kind: "error", message: `LLM returned non-JSON response: ${fullText.slice(0, 200)}` };
     return;
