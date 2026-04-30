@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
+import { useFormStatus } from "react-dom";
 
 import { Button } from "@/frontend/components/ui/shadcn/button";
 import { Input } from "@/frontend/components/ui/shadcn/input";
 import { Label } from "@/frontend/components/ui/shadcn/label";
+
+import { loginAction, type LoginActionState } from "./actions";
 
 const TEST_ACCOUNTS = [
   { email: "admin@astro.local", password: "Admin@2026!" },
@@ -17,80 +19,63 @@ const TEST_ACCOUNTS = [
 
 const SHOW_DEV_HINTS = process.env.NEXT_PUBLIC_SHOW_DEV_HINTS === "1";
 
+const initialState: LoginActionState = { error: null };
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" variant="default" size="lg" className="w-full" disabled={pending}>
+      {pending ? "Signing in…" : "Sign in"}
+    </Button>
+  );
+}
+
 export function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
   const callbackUrl = params.get("callbackUrl") ?? "/post-login";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    const res = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-    setSubmitting(false);
-    if (res?.error) {
-      setError("Invalid email or password.");
-      return;
-    }
-    router.replace(callbackUrl);
-    router.refresh();
-  }
+  const [state, formAction] = useActionState(loginAction, initialState);
 
   function fill(e: { email: string; password: string }) {
     setEmail(e.email);
     setPassword(e.password);
-    setError(null);
   }
 
   return (
     <div className="w-full max-w-md space-y-6">
-      <form onSubmit={onSubmit} className="space-y-4">
+      <form action={formAction} className="space-y-4">
+        <input type="hidden" name="callbackUrl" value={callbackUrl} />
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
           <Input
             id="email"
+            name="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             autoFocus
             autoComplete="email"
-            disabled={submitting}
           />
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
           <Input
             id="password"
+            name="password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             autoComplete="current-password"
-            disabled={submitting}
           />
         </div>
-        {error ? (
-          <p className="text-sm text-[var(--color-brand-rose)]">{error}</p>
+        {state.error ? (
+          <p className="text-sm text-[var(--color-brand-rose)]">{state.error}</p>
         ) : null}
-        <Button
-          type="submit"
-          variant="default"
-          size="lg"
-          className="w-full"
-          disabled={submitting}
-        >
-          {submitting ? "Signing in…" : "Sign in"}
-        </Button>
+        <SubmitButton />
       </form>
 
       <p className="text-center text-sm text-[var(--color-ink-muted)]">
